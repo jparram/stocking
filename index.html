@@ -1,0 +1,97 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Stocking – Grocery List</title>
+  <link rel="stylesheet" href="css/style.css" />
+</head>
+<body>
+  <div class="app">
+    <header class="app-header">
+      <h1>🛒 Stocking</h1>
+      <p class="subtitle">Your personal grocery list</p>
+    </header>
+
+    <main>
+      <!-- Add Item Form -->
+      <section class="add-section card">
+        <h2>Add Item</h2>
+        <form id="add-form" autocomplete="off">
+          <div class="form-row">
+            <input
+              type="text"
+              id="item-name"
+              placeholder="Item name (e.g. Milk)"
+              maxlength="100"
+              required
+            />
+            <input
+              type="number"
+              id="item-qty"
+              placeholder="Qty"
+              min="1"
+              max="999"
+              value="1"
+              class="qty-input"
+            />
+          </div>
+          <div class="form-row">
+            <select id="item-category">
+              <option value="General">General</option>
+              <option value="Produce">🥦 Produce</option>
+              <option value="Dairy">🥛 Dairy</option>
+              <option value="Meat &amp; Seafood">🥩 Meat &amp; Seafood</option>
+              <option value="Bakery">🍞 Bakery</option>
+              <option value="Frozen">🧊 Frozen</option>
+              <option value="Beverages">🧃 Beverages</option>
+              <option value="Snacks">🍪 Snacks</option>
+              <option value="Household">🏠 Household</option>
+              <option value="Personal Care">🧴 Personal Care</option>
+            </select>
+            <button type="submit" class="btn btn-primary">+ Add</button>
+          </div>
+        </form>
+      </section>
+
+      <!-- Filter + Actions Bar -->
+      <section class="toolbar">
+        <div class="filter-group">
+          <label for="filter-category" class="sr-only">Filter by category</label>
+          <select id="filter-category">
+            <option value="All">All categories</option>
+          </select>
+        </div>
+        <div class="action-group">
+          <button id="clear-checked-btn" class="btn btn-danger">
+            Remove checked
+          </button>
+          <button id="clear-all-btn" class="btn btn-outline">
+            Clear all
+          </button>
+        </div>
+      </section>
+
+      <!-- Summary -->
+      <div class="summary" id="summary">
+        <span id="summary-text">0 items</span>
+      </div>
+
+      <!-- Grocery List -->
+      <section id="list-container">
+        <ul id="grocery-list" class="grocery-list"></ul>
+        <div id="empty-state" class="empty-state hidden">
+          <span class="empty-icon">🛍️</span>
+          <p>Your list is empty. Add some items above!</p>
+        </div>
+      </section>
+    </main>
+
+    <footer class="app-footer">
+      <p>Items are saved automatically in your browser.</p>
+    </footer>
+  </div>
+
+  <script src="js/app.js"></script>
+</body>
+</html>
