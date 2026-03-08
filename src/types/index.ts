@@ -8,9 +8,12 @@ export interface Item {
   store: Store;
   parStock: number;
   unit: string;
-  cadenceDays: number; // how often to buy (7 = weekly, 14 = biweekly, etc.)
-  approxCost: number;
+  cadenceDays: number; // observed interval between purchases (days)
+  approxCost: number;  // verified shelf price from 2025 receipts
   notes?: string;
+  isHTOnly?: boolean;  // true = not available at Sam's Club
+  parMin?: string;     // reorder trigger description
+  buyQty?: string;     // how much to buy when restocking
 }
 
 export interface ShoppingListItem {
@@ -51,7 +54,7 @@ export interface WeeklyLog {
 export interface HouseholdSettings {
   name: string;
   memberCount: number;
-  cadenceStartDate: string; // ISO date string
+  cadenceStartDate: string; // ISO date string — first Sam's Sunday
   defaultStore: Store;
   customItems: Item[];
 }
