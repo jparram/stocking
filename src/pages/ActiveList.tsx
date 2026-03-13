@@ -5,6 +5,7 @@ import { formatDate, formatCurrency, listProgress, listTotalCost, groupByCategor
 import StoreBadge from '../components/StoreBadge';
 import ProgressBar from '../components/ProgressBar';
 import { MASTER_CATALOG } from '../data/masterCatalog';
+import { searchKrogerProducts, type KrogerSearchResult } from '../utils/krogerSearch';
 
 interface ActiveListProps {
   state: AppState;
@@ -17,6 +18,10 @@ export default function ActiveList({ state, loading, onUpdate, onLog }: ActiveLi
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const [addOpenCategory, setAddOpenCategory] = useState<string | null>(null);
+  const [krogerQuery, setKrogerQuery] = useState('');
+  const [krogerResults, setKrogerResults] = useState<KrogerSearchResult[]>([]);
+  const [krogerLoading, setKrogerLoading] = useState(false);
+  const [krogerError, setKrogerError] = useState<string | null>(null);
 
   const list = state.lists.find(l => l.id === id);
 
@@ -130,6 +135,39 @@ export default function ActiveList({ state, loading, onUpdate, onLog }: ActiveLi
     });
   };
 
+  const addKrogerItem = (result: KrogerSearchResult, category: string) => {
+    const newItem: ShoppingListItem = {
+      id: generateId(),
+      itemId: `kroger-${result.productId}`,
+      name: result.name,
+      category,
+      store: 'ht',
+      quantity: 1,
+      unit: result.size ?? 'ea',
+      approxCost: result.promoPrice ?? result.price ?? 0,
+      checked: false,
+    };
+    onUpdate({
+      ...list,
+      items: [...list.items, newItem],
+      updatedAt: new Date().toISOString(),
+    });
+  };
+
+  const runKrogerSearch = async () => {
+    if (!krogerQuery.trim()) return;
+    setKrogerLoading(true);
+    setKrogerError(null);
+    try {
+      const results = await searchKrogerProducts(krogerQuery.trim());
+      setKrogerResults(results);
+    } catch (e) {
+      setKrogerError(e instanceof Error ? e.message : 'Search failed');
+    } finally {
+      setKrogerLoading(false);
+    }
+  };
+
   return (
     <div className="space-y-4">
       {/* Header */}
@@ -184,14 +222,15 @@ export default function ActiveList({ state, loading, onUpdate, onLog }: ActiveLi
                 <span className="text-xs text-brand-muted">
                   {listItems.filter(i => i.checked).length}/{listItems.length}
                 </span>
-                {addable.length > 0 && (
-                  <button
-                    onClick={() => setAddOpenCategory(isOpen ? null : category)}
-                    className="text-xs text-sams font-medium hover:underline"
-                  >
-                    {isOpen ? 'Done' : '+ Add'}
-                  </button>
-                )}
+                <button
+                  onClick={() => {
+                    if (isOpen) { setAddOpenCategory(null); setKrogerResults([]); setKrogerQuery(''); }
+                    else setAddOpenCategory(category);
+                  }}
+                  className="text-xs text-sams font-medium hover:underline"
+                >
+                  {isOpen ? 'Done' : '+ Add'}
+                </button>
               </div>
             </div>
             <div className="divide-y divide-brand-border">
@@ -208,20 +247,70 @@ export default function ActiveList({ state, loading, onUpdate, onLog }: ActiveLi
               ))}
             </div>
             {isOpen && (
-              <div className="border-t border-brand-border divide-y divide-brand-border">
-                {addable.map(catalogItem => (
+              <div className="border-t border-brand-border">
+                {/* Kroger search */}
+                <div className="px-4 py-2.5 flex gap-2 border-b border-brand-border">
+                  <input
+                    type="text"
+                    value={krogerQuery}
+                    onChange={e => setKrogerQuery(e.target.value)}
+                    onKeyDown={e => { if (e.key === 'Enter') void runKrogerSearch(); }}
+                    placeholder="Search Harris Teeter products…"
+                    className="flex-1 text-sm border border-brand-border rounded px-2 py-1 focus:outline-none focus:ring-1 focus:ring-sams"
+                  />
                   <button
-                    key={catalogItem.id}
-                    onClick={() => { addItem(catalogItem); }}
-                    className="w-full px-4 py-2.5 flex justify-between items-center hover:bg-brand-bg text-left transition-colors"
+                    onClick={() => void runKrogerSearch()}
+                    disabled={krogerLoading}
+                    className="px-3 py-1 bg-sams text-white rounded text-sm font-medium disabled:opacity-50"
                   >
-                    <div>
-                      <span className="text-sm text-brand-text">{catalogItem.name}</span>
-                      <span className="text-xs text-brand-muted ml-2">{catalogItem.parStock} {catalogItem.unit}</span>
-                    </div>
-                    <span className="text-xs text-brand-muted">{formatCurrency(catalogItem.approxCost)} +</span>
+                    {krogerLoading ? '…' : 'Search'}
                   </button>
-                ))}
+                </div>
+                {krogerError && (
+                  <p className="px-4 py-2 text-xs text-red-500">{krogerError}</p>
+                )}
+                {/* Kroger results */}
+                {krogerResults.length > 0 && (
+                  <div className="divide-y divide-brand-border">
+                    {krogerResults.map(result => (
+                      <button
+                        key={result.productId}
+                        onClick={() => { addKrogerItem(result, category); }}
+                        className="w-full px-4 py-2.5 flex justify-between items-center hover:bg-blue-50 text-left transition-colors"
+                      >
+                        <div>
+                          <span className="text-sm text-brand-text">{result.name}</span>
+                          {result.size && <span className="text-xs text-brand-muted ml-2">{result.size}</span>}
+                          {result.brand && <span className="text-xs text-brand-muted ml-1">· {result.brand}</span>}
+                        </div>
+                        <span className="text-xs text-brand-muted shrink-0 ml-2">
+                          {result.price ? formatCurrency(result.price) : '—'} +
+                        </span>
+                      </button>
+                    ))}
+                  </div>
+                )}
+                {/* Catalog items */}
+                {addable.length > 0 && (
+                  <div className="divide-y divide-brand-border">
+                    {krogerResults.length === 0 && (
+                      <p className="px-4 py-1.5 text-xs text-brand-muted font-medium bg-brand-bg">From your catalog</p>
+                    )}
+                    {addable.map(catalogItem => (
+                      <button
+                        key={catalogItem.id}
+                        onClick={() => { addItem(catalogItem); }}
+                        className="w-full px-4 py-2.5 flex justify-between items-center hover:bg-brand-bg text-left transition-colors"
+                      >
+                        <div>
+                          <span className="text-sm text-brand-text">{catalogItem.name}</span>
+                          <span className="text-xs text-brand-muted ml-2">{catalogItem.parStock} {catalogItem.unit}</span>
+                        </div>
+                        <span className="text-xs text-brand-muted">{formatCurrency(catalogItem.approxCost)} +</span>
+                      </button>
+                    ))}
+                  </div>
+                )}
               </div>
             )}
           </div>
