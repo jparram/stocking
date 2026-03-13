@@ -11,6 +11,9 @@ jobs:
   deploy:
     name: Build & Deploy
     runs-on: ubuntu-latest
+    permissions:
+      id-token: write   # required for OIDC auth
+      contents: read
 
     steps:
       - name: Checkout
@@ -41,9 +44,8 @@ jobs:
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v4
         with:
-          aws-access-key-id:     ${{ secrets.AWS_ACCESS_KEY_ID }}
-          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          aws-region:            ${{ secrets.AWS_REGION }}
+          role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
+          aws-region:     ${{ secrets.AWS_REGION }}
 
       - name: Deploy to Lambda
         run: |
@@ -58,12 +60,11 @@ jobs:
             --function-name stocking-mcp \
             --region ${{ secrets.AWS_REGION }}
 
-      - name: Print Function URL
+      - name: Print API Gateway URL
         run: |
-          URL=$(aws lambda get-function-url-config \
-            --function-name stocking-mcp \
+          URL=$(aws apigatewayv2 get-apis \
             --region ${{ secrets.AWS_REGION }} \
-            --query 'FunctionUrl' \
+            --query "Items[?Name=='stocking-mcp-api'].ApiEndpoint | [0]" \
             --output text)
           echo "MCP server live at: $URL"
           echo "### MCP Server URL" >> $GITHUB_STEP_SUMMARY

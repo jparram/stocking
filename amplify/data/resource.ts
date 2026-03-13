@@ -26,7 +26,7 @@ const schema = a.schema({
     })
     .authorization(allow => [
       allow.owner(),
-      allow.apiKey().to(['create', 'read', 'update']),
+      allow.publicApiKey().to(['create', 'read', 'update']),
     ]),
 
   ShoppingListItem: a
@@ -45,7 +45,7 @@ const schema = a.schema({
     })
     .authorization(allow => [
       allow.owner(),
-      allow.apiKey().to(['create', 'read', 'update']),
+      allow.publicApiKey().to(['create', 'read', 'update']),
     ]),
 
   WeeklyLog: a
@@ -59,7 +59,7 @@ const schema = a.schema({
     })
     .authorization(allow => [
       allow.owner(),
-      allow.apiKey().to(['create', 'read']),
+      allow.publicApiKey().to(['create', 'read']),
     ]),
 });
 

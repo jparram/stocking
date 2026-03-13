@@ -1,0 +1,9 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(aws appsync:*)",
+      "Bash(aws amplify:*)",
+      "Bash(aws iam:*)"
+    ]
+  }
+}

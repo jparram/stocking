@@ -2,13 +2,16 @@
 
 Do this once in AWS, then every push to `mcp-server` auto-deploys via GitHub Actions.
 
+All local `aws` commands use the `jp-admin` SSO profile. Run `aws sso login --profile jp-admin` first if your session has expired.
+
 ---
 
-## 1 — Create the Lambda function
+## 1 — Create the Lambda IAM role
 
 ```bash
 # Create execution role
 aws iam create-role \
+  --profile jp-admin \
   --role-name stocking-mcp-role \
   --assume-role-policy-document '{
     "Version": "2012-10-17",
@@ -20,14 +23,24 @@ aws iam create-role \
   }'
 
 aws iam attach-role-policy \
+  --profile jp-admin \
   --role-name stocking-mcp-role \
   --policy-arn arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+```
 
-# First deploy (build the zip first: cd stocking-mcp && npm run package)
+---
+
+## 2 — Build and deploy the function for the first time
+
+```bash
+# From repo root
+cd stocking-mcp && npm run package && cd ..
+
 aws lambda create-function \
+  --profile jp-admin \
   --function-name stocking-mcp \
   --runtime nodejs20.x \
-  --role arn:aws:iam::YOUR_ACCOUNT_ID:role/stocking-mcp-role \
+  --role arn:aws:iam::060712839465:role/stocking-mcp-role \
   --handler dist/lambda.handler \
   --zip-file fileb://mcp-lambda.zip \
   --timeout 30 \
@@ -40,45 +53,112 @@ aws lambda create-function \
   }'
 ```
 
+Replace placeholder values — `APPSYNC_ENDPOINT` and `APPSYNC_API_KEY` come from `amplify_outputs.json` after an Amplify deploy. `MCP_AUTH_TOKEN` can be any random secret (e.g. `openssl rand -hex 32`).
+
 ---
 
-## 2 — Enable Function URL (public HTTPS endpoint)
+## 3 — Create an API Gateway HTTP API (public HTTPS endpoint)
+
+Lambda Function URLs require disabling account-level Block Public Access (BPA), which isn't easily toggled via CLI. API Gateway sidesteps this entirely — it invokes the Lambda internally and exposes a clean public HTTPS endpoint.
 
 ```bash
-aws lambda create-function-url-config \
+LAMBDA_ARN=$(aws lambda get-function \
+  --profile jp-admin \
   --function-name stocking-mcp \
-  --auth-type NONE
+  --query 'Configuration.FunctionArn' --output text)
 
-# Allow public invoke
+# Create HTTP API
+API_ID=$(aws apigatewayv2 create-api \
+  --profile jp-admin \
+  --name stocking-mcp-api \
+  --protocol-type HTTP \
+  --query 'ApiId' --output text)
+
+# Create Lambda integration
+INTEGRATION_ID=$(aws apigatewayv2 create-integration \
+  --profile jp-admin \
+  --api-id $API_ID \
+  --integration-type AWS_PROXY \
+  --integration-uri "arn:aws:apigateway:us-east-1:lambda:path/2015-03-31/functions/${LAMBDA_ARN}/invocations" \
+  --payload-format-version 2.0 \
+  --query 'IntegrationId' --output text)
+
+# Route all requests to Lambda
+aws apigatewayv2 create-route \
+  --profile jp-admin \
+  --api-id $API_ID \
+  --route-key 'ANY /' \
+  --target "integrations/$INTEGRATION_ID"
+
+# Auto-deploy default stage
+aws apigatewayv2 create-stage \
+  --profile jp-admin \
+  --api-id $API_ID \
+  --stage-name '$default' \
+  --auto-deploy
+
+# Grant API Gateway permission to invoke Lambda
 aws lambda add-permission \
+  --profile jp-admin \
   --function-name stocking-mcp \
-  --statement-id FunctionURLAllowPublicAccess \
-  --action lambda:InvokeFunctionUrl \
-  --principal "*" \
-  --function-url-auth-type NONE
+  --statement-id apigw-invoke \
+  --action lambda:InvokeFunction \
+  --principal apigateway.amazonaws.com \
+  --source-arn "arn:aws:execute-api:us-east-1:060712839465:${API_ID}/*/*/"
+
+echo "API endpoint: https://${API_ID}.execute-api.us-east-1.amazonaws.com/"
 ```
 
-The URL will look like:
-`https://xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx.lambda-url.us-east-1.on.aws/`
+**Current endpoint:** `https://e880pa3u03.execute-api.us-east-1.amazonaws.com/`
 
 ---
 
-## 3 — Add GitHub Actions secrets
+## 4 — Set up GitHub Actions OIDC (no static keys needed)
 
-In your repo: **Settings → Secrets and variables → Actions → New repository secret**
+Because we use AWS SSO, GitHub Actions authenticates via OIDC instead of `AWS_ACCESS_KEY_ID`/`AWS_SECRET_ACCESS_KEY`.
 
-| Secret | Value |
-|---|---|
-| `AWS_ACCESS_KEY_ID` | IAM user key with `lambda:UpdateFunctionCode` + `lambda:GetFunctionUrlConfig` |
-| `AWS_SECRET_ACCESS_KEY` | Corresponding secret |
-| `AWS_REGION` | e.g. `us-east-1` |
+### 4a — Create the OIDC identity provider (one-time per AWS account)
 
-Minimum IAM policy for the deploy user:
-```json
-{
-  "Version": "2012-10-17",
-  "Statement": [
-    {
+```bash
+aws iam create-open-id-connect-provider \
+  --profile jp-admin \
+  --url https://token.actions.githubusercontent.com \
+  --client-id-list sts.amazonaws.com \
+  --thumbprint-list 6938fd4d98bab03faadb97b34396831e3780aea1
+```
+
+### 4b — Create an IAM deploy role trusted by the repo
+
+```bash
+aws iam create-role \
+  --profile jp-admin \
+  --role-name stocking-mcp-deploy \
+  --assume-role-policy-document '{
+    "Version": "2012-10-17",
+    "Statement": [{
+      "Effect": "Allow",
+      "Principal": {
+        "Federated": "arn:aws:iam::060712839465:oidc-provider/token.actions.githubusercontent.com"
+      },
+      "Action": "sts:AssumeRoleWithWebIdentity",
+      "Condition": {
+        "StringEquals": {
+          "token.actions.githubusercontent.com:aud": "sts.amazonaws.com"
+        },
+        "StringLike": {
+          "token.actions.githubusercontent.com:sub": "repo:jparram/stocking:*"
+        }
+      }
+    }]
+  }'
+
+aws iam put-role-policy \
+  --profile jp-admin \
+  --role-name stocking-mcp-deploy \
+  --policy-name stocking-mcp-deploy-policy \
+  --policy-document '{
+    "Version": "2012-10-17",
+    "Statement": [{
       "Effect": "Allow",
       "Action": [
         "lambda:UpdateFunctionCode",
@@ -86,18 +166,29 @@ Minimum IAM policy for the deploy user:
         "lambda:GetFunctionUrlConfig",
         "lambda:WaitForFunctionUpdated"
       ],
-      "Resource": "arn:aws:lambda:*:*:function:stocking-mcp"
-    }
-  ]
-}
+      "Resource": "arn:aws:lambda:*:060712839465:function:stocking-mcp"
+    }]
+  }'
+```
+
+### 4c — Set GitHub Actions secrets with gh cli
+
+```bash
+gh secret set AWS_REGION \
+  --repo jparram/stocking \
+  --body "us-east-1"
+
+gh secret set AWS_ROLE_ARN \
+  --repo jparram/stocking \
+  --body "arn:aws:iam::060712839465:role/stocking-mcp-deploy"
 ```
 
 ---
 
-## 4 — Connect to Claude.ai
+## 5 — Connect to Claude.ai
 
 1. Settings → Integrations → Add custom integration
-2. URL: your Lambda Function URL (from step 2)
+2. URL: `https://e880pa3u03.execute-api.us-east-1.amazonaws.com/`
 3. Authentication: Bearer token → paste your `MCP_AUTH_TOKEN` value
 4. Save and reload
 
@@ -105,10 +196,10 @@ After that, every push to `mcp-server` auto-deploys and Claude is always on the 
 
 ---
 
-## 5 — Verify it's working
+## 6 — Verify it's working
 
 ```bash
-curl -X POST YOUR_FUNCTION_URL \
+curl -X POST https://e880pa3u03.execute-api.us-east-1.amazonaws.com/ \
   -H "Authorization: Bearer YOUR_MCP_AUTH_TOKEN" \
   -H "Content-Type: application/json" \
   -d '{"jsonrpc":"2.0","method":"tools/list","id":1}'
