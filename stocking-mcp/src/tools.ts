@@ -5,6 +5,7 @@
 import type { CadenceEngine } from './cadence.js';
 import type { GraphQLClient } from './graphql.js';
 import type { CatalogItem } from './catalog.js';
+import type { KrogerClient } from './kroger.js';
 
 export const TOOL_DEFINITIONS = [
   {
@@ -111,6 +112,21 @@ export const TOOL_DEFINITIONS = [
       },
     },
   },
+  {
+    name: 'search_products',
+    description:
+      'Searches the Kroger/Harris Teeter product catalog for items by keyword. '
+      + 'Returns product names, sizes, and approximate prices. '
+      + 'Use this to discover HT products that are not yet in the master catalog.',
+    inputSchema: {
+      type: 'object',
+      required: ['query'],
+      properties: {
+        query: { type: 'string', description: 'Product search term (e.g. "organic milk", "bread")' },
+        limit: { type: 'number', description: 'Max results (default 10, max 50)' },
+      },
+    },
+  },
 ];
 
 export async function handleToolCall(
@@ -118,9 +134,10 @@ export async function handleToolCall(
   args: Record<string, unknown>,
   cadence: CadenceEngine,
   gql: GraphQLClient,
-  catalog: CatalogItem[]
+  catalog: CatalogItem[],
+  kroger?: KrogerClient
 ): Promise<{ content: { type: string; text: string }[] }> {
-  const text = await dispatch(name, args, cadence, gql, catalog);
+  const text = await dispatch(name, args, cadence, gql, catalog, kroger);
   return { content: [{ type: 'text', text: JSON.stringify(text, null, 2) }] };
 }
 
@@ -129,7 +146,8 @@ async function dispatch(
   args: Record<string, unknown>,
   cadence: CadenceEngine,
   gql: GraphQLClient,
-  catalog: CatalogItem[]
+  catalog: CatalogItem[],
+  kroger?: KrogerClient
 ): Promise<unknown> {
   switch (name) {
     case 'get_due_store': {
@@ -207,6 +225,23 @@ async function dispatch(
         args['list_id']       as string,
         args['actual_spend']  as number | undefined
       );
+
+    case 'search_products': {
+      if (!kroger) throw new Error('Kroger API not configured (missing KROGER_CLIENT_ID / KROGER_CLIENT_SECRET)');
+      const products = await kroger.searchProducts(
+        args['query'] as string,
+        (args['limit'] as number | undefined) ?? 10
+      );
+      return products.map(p => ({
+        productId: p.productId,
+        name: p.description,
+        brand: p.brand,
+        categories: p.categories,
+        size: p.items?.[0]?.size,
+        price: p.items?.[0]?.price?.regular,
+        promoPrice: p.items?.[0]?.price?.promo,
+      }));
+    }
 
     default:
       throw new Error(`Unknown tool: ${name}`);

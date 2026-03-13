@@ -16,6 +16,7 @@ import {
 } from '@modelcontextprotocol/sdk/types.js';
 import { GraphQLClient } from './graphql.js';
 import { CadenceEngine } from './cadence.js';
+import { KrogerClient } from './kroger.js';
 import { MASTER_CATALOG } from './catalog.js';
 import { TOOL_DEFINITIONS, handleToolCall } from './tools.js';
 
@@ -33,6 +34,10 @@ const cadence = new CadenceEngine(
   process.env['CADENCE_START_DATE'] ?? '2026-01-04'
 );
 
+const kroger = process.env['KROGER_CLIENT_ID'] && process.env['KROGER_CLIENT_SECRET']
+  ? new KrogerClient(process.env['KROGER_CLIENT_ID'], process.env['KROGER_CLIENT_SECRET'])
+  : undefined;
+
 server.setRequestHandler(ListToolsRequestSchema, async () => ({
   tools: TOOL_DEFINITIONS,
 }));
@@ -41,7 +46,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
   const { name, arguments: args } = request.params;
   try {
     return await handleToolCall(
-      name, args as Record<string, unknown>, cadence, gql, MASTER_CATALOG
+      name, args as Record<string, unknown>, cadence, gql, MASTER_CATALOG, kroger
     );
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);

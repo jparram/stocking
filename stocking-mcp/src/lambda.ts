@@ -13,6 +13,7 @@
 
 import { CadenceEngine } from './cadence.js';
 import { GraphQLClient } from './graphql.js';
+import { KrogerClient } from './kroger.js';
 import { MASTER_CATALOG } from './catalog.js';
 import { TOOL_DEFINITIONS, handleToolCall } from './tools.js';
 
@@ -24,6 +25,10 @@ const gql = new GraphQLClient(
   process.env['APPSYNC_ENDPOINT'] ?? '',
   process.env['APPSYNC_API_KEY']  ?? ''
 );
+
+const kroger = process.env['KROGER_CLIENT_ID'] && process.env['KROGER_CLIENT_SECRET']
+  ? new KrogerClient(process.env['KROGER_CLIENT_ID'], process.env['KROGER_CLIENT_SECRET'])
+  : undefined;
 
 interface LambdaEvent {
   httpMethod?: string;
@@ -100,7 +105,7 @@ export const handler = async (event: LambdaEvent): Promise<LambdaResponse> => {
 
       case 'tools/call': {
         const p = rpc.params as { name: string; arguments?: Record<string, unknown> };
-        result = await handleToolCall(p.name, p.arguments ?? {}, cadence, gql, MASTER_CATALOG);
+        result = await handleToolCall(p.name, p.arguments ?? {}, cadence, gql, MASTER_CATALOG, kroger);
         break;
       }
 
