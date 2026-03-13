@@ -86,6 +86,14 @@ export default function ActiveList({ state, loading, onUpdate, onLog }: ActiveLi
     return !alreadyAdded && matchStore && matchSearch;
   });
 
+  const updateQuantity = (itemId: string, quantity: number) => {
+    onUpdate({
+      ...list,
+      items: list.items.map(i => i.id === itemId ? { ...i, quantity } : i),
+      updatedAt: new Date().toISOString(),
+    });
+  };
+
   const removeItem = (itemId: string) => {
     onUpdate({
       ...list,
@@ -211,6 +219,7 @@ export default function ActiveList({ state, loading, onUpdate, onLog }: ActiveLi
                 onToggle={() => toggleItem(item.id)}
                 onNote={(n) => updateNote(item.id, n)}
                 onRemove={() => removeItem(item.id)}
+                onQuantity={(q) => updateQuantity(item.id, q)}
               />
             ))}
           </div>
@@ -234,11 +243,14 @@ interface ChecklistItemProps {
   onToggle: () => void;
   onNote: (note: string) => void;
   onRemove: () => void;
+  onQuantity: (qty: number) => void;
 }
 
-function ChecklistItem({ item, store, onToggle, onNote, onRemove }: ChecklistItemProps) {
+function ChecklistItem({ item, store, onToggle, onNote, onRemove, onQuantity }: ChecklistItemProps) {
   const [editingNote, setEditingNote] = useState(false);
   const [noteText, setNoteText] = useState(item.notes ?? '');
+  const [editingQty, setEditingQty] = useState(false);
+  const [qtyText, setQtyText] = useState(String(item.quantity));
 
   const checkColor = store === 'ht' ? 'text-ht' : 'text-sams';
 
@@ -279,7 +291,23 @@ function ChecklistItem({ item, store, onToggle, onNote, onRemove }: ChecklistIte
           )}
         </div>
         <div className="text-right text-xs text-brand-muted shrink-0 flex flex-col items-end gap-1">
-          <span>{item.quantity} {item.unit}</span>
+          {editingQty ? (
+            <input
+              autoFocus
+              type="number"
+              min="0.5"
+              step="0.5"
+              value={qtyText}
+              onChange={e => setQtyText(e.target.value)}
+              onBlur={() => { const n = parseFloat(qtyText); if (n > 0) onQuantity(n); setEditingQty(false); }}
+              onKeyDown={e => { if (e.key === 'Enter') { const n = parseFloat(qtyText); if (n > 0) onQuantity(n); setEditingQty(false); } if (e.key === 'Escape') setEditingQty(false); }}
+              className="w-14 text-xs border border-brand-border rounded px-1 py-0.5 text-right focus:outline-none focus:ring-1 focus:ring-sams"
+            />
+          ) : (
+            <button onClick={() => { setQtyText(String(item.quantity)); setEditingQty(true); }} className="hover:text-sams" title="Edit quantity">
+              {item.quantity} {item.unit}
+            </button>
+          )}
           <span>{formatCurrency(item.approxCost)}</span>
           <div className="flex gap-2">
             <button onClick={() => setEditingNote(true)} className="text-brand-muted hover:text-sams" title="Add note">📝</button>
