@@ -26,12 +26,18 @@ export async function searchKrogerProducts(query: string, limit = 15): Promise<K
       params: { name: 'search_products', arguments: { query, limit } },
     }),
   });
-  if (!res.ok) throw new Error(`Search failed: ${res.status}`);
   const data = await res.json() as {
     result?: { content?: Array<{ text?: string }> };
     error?: { message: string };
   };
-  if (data.error) throw new Error(data.error.message);
+  if (!res.ok && !data.error) throw new Error(`Search failed: ${res.status}`);
+  if (data.error) {
+    const msg = data.error.message;
+    if (msg.includes('invalid credentials') || msg.includes('401')) {
+      throw new Error('Harris Teeter search unavailable — Kroger API credentials pending activation');
+    }
+    throw new Error(msg);
+  }
   const text = data.result?.content?.[0]?.text ?? '[]';
   return JSON.parse(text) as KrogerSearchResult[];
 }

@@ -136,8 +136,9 @@ export const handler = async (event: LambdaEvent): Promise<LambdaResponse> => {
     };
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
+    // Return 200 so the browser doesn't swallow the body — the error is in the JSON-RPC payload
     return {
-      statusCode: 500,
+      statusCode: 200,
       headers: CORS_HEADERS,
       body: JSON.stringify({
         jsonrpc: '2.0',
