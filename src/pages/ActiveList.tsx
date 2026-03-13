@@ -270,7 +270,7 @@ function ChecklistItem({ item, store, onToggle, onNote }: ChecklistItemProps) {
         </div>
         <div className="text-right text-xs text-brand-muted shrink-0 flex flex-col items-end gap-1">
           <span>{item.quantity} {item.unit}</span>
-          <span>{formatCurrency(item.approxCost * item.quantity)}</span>
+          <span>{formatCurrency(item.approxCost)}</span>
           <button
             onClick={() => setEditingNote(true)}
             className="text-brand-muted hover:text-sams"

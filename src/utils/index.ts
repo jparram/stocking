@@ -82,7 +82,7 @@ export function listProgress(list: ShoppingList): number {
 }
 
 export function listTotalCost(list: ShoppingList): number {
-  return list.items.reduce((sum, i) => sum + i.approxCost * i.quantity, 0);
+  return list.items.reduce((sum, i) => sum + i.approxCost, 0);
 }
 
 export function groupByCategory<T extends { category: string }>(
@@ -103,7 +103,7 @@ export function exportToCSV(list: ShoppingList): void {
     i.store === 'sams' ? "Sam's Club" : 'Harris Teeter',
     i.quantity.toString(),
     i.unit,
-    formatCurrency(i.approxCost * i.quantity),
+    formatCurrency(i.approxCost),
     i.checked ? 'Yes' : 'No',
     i.notes ?? '',
   ]);
