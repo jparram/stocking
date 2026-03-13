@@ -1,10 +1,10 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { generateClient } from 'aws-amplify/data';
 import type { Schema } from '../../amplify/data/resource';
 import type { AppState, HouseholdSettings, ShoppingList, ShoppingListItem, WeeklyLog } from '../types';
 import { useLocalStorage } from './useLocalStorage';
 
-const client = generateClient<Schema>({ authMode: 'apiKey' });
+type Client = ReturnType<typeof generateClient<Schema>>;
 
 const DEFAULT_SETTINGS: HouseholdSettings = {
   name: 'Our Household',
@@ -44,6 +44,15 @@ function mapList(list: Schema['ShoppingList']['type'], items: ShoppingListItem[]
 }
 
 export function useAppState() {
+  // Lazy-init client inside the hook so Amplify.configure() has already run
+  const clientRef = useRef<Client | null>(null);
+  function getClient(): Client {
+    if (!clientRef.current) {
+      clientRef.current = generateClient<Schema>({ authMode: 'apiKey' });
+    }
+    return clientRef.current;
+  }
+
   const [lists, setLists] = useState<ShoppingList[]>([]);
   const [weeklyLogs, setWeeklyLogs] = useState<WeeklyLog[]>([]);
   const [settings, setSettings] = useLocalStorage<HouseholdSettings>('grocery-settings', DEFAULT_SETTINGS);
@@ -56,6 +65,7 @@ export function useAppState() {
   async function loadData() {
     setLoading(true);
     try {
+      const client = getClient();
       const [{ data: rawLists }, { data: rawLogs }] = await Promise.all([
         client.models.ShoppingList.list(),
         client.models.WeeklyLog.list(),
@@ -85,6 +95,8 @@ export function useAppState() {
           }))
           .sort((a, b) => b.completedAt.localeCompare(a.completedAt))
       );
+    } catch (err) {
+      console.error('Failed to load data from DynamoDB:', err);
     } finally {
       setLoading(false);
     }
@@ -93,6 +105,7 @@ export function useAppState() {
   const updateSettings = (s: HouseholdSettings) => setSettings(s);
 
   const addList = async (list: ShoppingList) => {
+    const client = getClient();
     const { data: created } = await client.models.ShoppingList.create({
       id: list.id,
       name: list.name,
@@ -123,6 +136,7 @@ export function useAppState() {
   };
 
   const updateList = async (list: ShoppingList) => {
+    const client = getClient();
     await client.models.ShoppingList.update({
       id: list.id,
       status: list.status,
@@ -142,6 +156,7 @@ export function useAppState() {
   };
 
   const deleteList = async (id: string) => {
+    const client = getClient();
     const { data: items } = await client.models.ShoppingListItem.list({ filter: { listId: { eq: id } } });
     await Promise.all(items.map(item => client.models.ShoppingListItem.delete({ id: item.id })));
     await client.models.ShoppingList.delete({ id });
@@ -149,6 +164,7 @@ export function useAppState() {
   };
 
   const addLog = async (log: WeeklyLog) => {
+    const client = getClient();
     await client.models.WeeklyLog.create({
       id: log.id,
       listId: log.listId,

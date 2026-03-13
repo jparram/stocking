@@ -10,7 +10,7 @@ import Settings from './pages/Settings';
 import { useAppState } from './hooks/useAppState';
 
 export default function App() {
-  const { state, updateSettings, addList, updateList, addLog } = useAppState();
+  const { state, loading, updateSettings, addList, updateList, addLog } = useAppState();
 
   return (
     <BrowserRouter>
@@ -24,7 +24,7 @@ export default function App() {
           />
           <Route
             path="/list/:id"
-            element={<ActiveList state={state} onUpdate={updateList} onLog={addLog} />}
+            element={<ActiveList state={state} loading={loading} onUpdate={updateList} onLog={addLog} />}
           />
           <Route
             path="/list/:id/share"

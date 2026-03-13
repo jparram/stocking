@@ -8,11 +8,12 @@ import { MASTER_CATALOG } from '../data/masterCatalog';
 
 interface ActiveListProps {
   state: AppState;
+  loading: boolean;
   onUpdate: (list: ShoppingList) => void;
   onLog: (log: import('../types').WeeklyLog) => void;
 }
 
-export default function ActiveList({ state, onUpdate, onLog }: ActiveListProps) {
+export default function ActiveList({ state, loading, onUpdate, onLog }: ActiveListProps) {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const [addSearch, setAddSearch] = useState('');
@@ -21,6 +22,9 @@ export default function ActiveList({ state, onUpdate, onLog }: ActiveListProps) 
   const list = state.lists.find(l => l.id === id);
 
   if (!list) {
+    if (loading) {
+      return <div className="text-center py-16 text-gray-500">Loading...</div>;
+    }
     return (
       <div className="text-center py-16">
         <div className="text-4xl mb-4">😕</div>
