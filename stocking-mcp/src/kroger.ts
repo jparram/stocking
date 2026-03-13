@@ -1,7 +1,10 @@
 /**
  * Kroger Products API client.
- * Harris Teeter is a Kroger subsidiary — same API, filtered by chain.
+ * Harris Teeter is a Kroger subsidiary — same API, filtered by location.
  * Uses client_credentials OAuth flow (no user login required).
+ *
+ * Pricing requires a locationId — use the Locations API to find your
+ * nearest HT store. Pass HT_LOCATION_ID in env vars.
  */
 
 const TOKEN_URL = 'https://api-ce.kroger.com/v1/connect/oauth2/token';
@@ -26,12 +29,14 @@ interface TokenResponse {
 export class KrogerClient {
   private clientId: string;
   private clientSecret: string;
+  private locationId?: string;
   private token: string | null = null;
   private tokenExpiresAt = 0;
 
-  constructor(clientId: string, clientSecret: string) {
+  constructor(clientId: string, clientSecret: string, locationId?: string) {
     this.clientId = clientId;
     this.clientSecret = clientSecret;
+    this.locationId = locationId;
   }
 
   private async getToken(): Promise<string> {
@@ -62,11 +67,10 @@ export class KrogerClient {
     const params = new URLSearchParams({
       'filter.term': query,
       'filter.limit': String(Math.min(limit, 50)),
-      // Harris Teeter chain filter — Kroger's internal chain ID for HT
-      'filter.brand': '',
     });
-    // Remove empty params
-    params.delete('filter.brand');
+    if (this.locationId) {
+      params.set('filter.locationId', this.locationId);
+    }
 
     const res = await fetch(`${PRODUCTS_URL}?${params}`, {
       headers: { Authorization: `Bearer ${token}` },

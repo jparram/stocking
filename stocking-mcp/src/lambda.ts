@@ -27,7 +27,11 @@ const gql = new GraphQLClient(
 );
 
 const kroger = process.env['KROGER_CLIENT_ID'] && process.env['KROGER_CLIENT_SECRET']
-  ? new KrogerClient(process.env['KROGER_CLIENT_ID'], process.env['KROGER_CLIENT_SECRET'])
+  ? new KrogerClient(
+      process.env['KROGER_CLIENT_ID'],
+      process.env['KROGER_CLIENT_SECRET'],
+      process.env['HT_LOCATION_ID']
+    )
   : undefined;
 
 interface LambdaEvent {

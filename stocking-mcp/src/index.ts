@@ -35,7 +35,11 @@ const cadence = new CadenceEngine(
 );
 
 const kroger = process.env['KROGER_CLIENT_ID'] && process.env['KROGER_CLIENT_SECRET']
-  ? new KrogerClient(process.env['KROGER_CLIENT_ID'], process.env['KROGER_CLIENT_SECRET'])
+  ? new KrogerClient(
+      process.env['KROGER_CLIENT_ID'],
+      process.env['KROGER_CLIENT_SECRET'],
+      process.env['HT_LOCATION_ID']
+    )
   : undefined;
 
 server.setRequestHandler(ListToolsRequestSchema, async () => ({
