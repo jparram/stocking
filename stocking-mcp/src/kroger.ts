@@ -4,8 +4,8 @@
  * Uses client_credentials OAuth flow (no user login required).
  */
 
-const TOKEN_URL = 'https://api.kroger.com/v1/connect/oauth2/token';
-const PRODUCTS_URL = 'https://api.kroger.com/v1/products';
+const TOKEN_URL = 'https://api-ce.kroger.com/v1/connect/oauth2/token';
+const PRODUCTS_URL = 'https://api-ce.kroger.com/v1/products';
 
 export interface KrogerProduct {
   productId: string;
