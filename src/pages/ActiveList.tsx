@@ -16,8 +16,7 @@ interface ActiveListProps {
 export default function ActiveList({ state, loading, onUpdate, onLog }: ActiveListProps) {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
-  const [addSearch, setAddSearch] = useState('');
-  const [showAddPanel, setShowAddPanel] = useState(false);
+  const [addOpenCategory, setAddOpenCategory] = useState<string | null>(null);
 
   const list = state.lists.find(l => l.id === id);
 
@@ -79,12 +78,21 @@ export default function ActiveList({ state, loading, onUpdate, onLog }: ActiveLi
     navigate('/history');
   };
 
-  const addableItems = MASTER_CATALOG.filter(catalogItem => {
+  const addableByCategory = MASTER_CATALOG.reduce<Record<string, typeof MASTER_CATALOG>>((acc, catalogItem) => {
     const alreadyAdded = list.items.some(i => i.itemId === catalogItem.id);
     const matchStore = list.store === 'both' || catalogItem.store === list.store;
-    const matchSearch = !addSearch || catalogItem.name.toLowerCase().includes(addSearch.toLowerCase());
-    return !alreadyAdded && matchStore && matchSearch;
-  });
+    if (!alreadyAdded && matchStore) {
+      if (!acc[catalogItem.category]) acc[catalogItem.category] = [];
+      acc[catalogItem.category].push(catalogItem);
+    }
+    return acc;
+  }, {});
+
+  // All categories: ones with items on the list + catalog-only ones with addable items
+  const allCategories = Array.from(new Set([
+    ...Object.keys(grouped),
+    ...Object.keys(addableByCategory),
+  ])).sort();
 
   const updateQuantity = (itemId: string, quantity: number) => {
     onUpdate({
@@ -146,12 +154,6 @@ export default function ActiveList({ state, loading, onUpdate, onLog }: ActiveLi
 
       {/* Actions */}
       <div className="flex gap-2 flex-wrap">
-        <button
-          onClick={() => setShowAddPanel(!showAddPanel)}
-          className="px-3 py-2 bg-white border border-brand-border rounded-lg text-sm font-medium hover:bg-brand-bg transition-colors"
-        >
-          + Add Item
-        </button>
         <Link
           to={`/list/${list.id}/share`}
           className="px-3 py-2 bg-white border border-brand-border rounded-lg text-sm font-medium hover:bg-brand-bg transition-colors"
@@ -169,62 +171,62 @@ export default function ActiveList({ state, loading, onUpdate, onLog }: ActiveLi
         )}
       </div>
 
-      {/* Add Item Panel */}
-      {showAddPanel && (
-        <div className="bg-white rounded-xl border border-brand-border p-4 shadow-sm">
-          <h3 className="font-semibold text-sm mb-2">Add Items</h3>
-          <input
-            type="text"
-            placeholder="Search catalog..."
-            value={addSearch}
-            onChange={e => setAddSearch(e.target.value)}
-            className="w-full border border-brand-border rounded-lg px-3 py-2 text-sm mb-2 focus:outline-none focus:ring-2 focus:ring-sams"
-          />
-          <div className="divide-y divide-brand-border max-h-48 overflow-y-auto rounded-lg border border-brand-border">
-            {addableItems.slice(0, 20).map(item => (
-              <button
-                key={item.id}
-                onClick={() => addItem(item)}
-                className="w-full px-3 py-2.5 flex justify-between items-center hover:bg-brand-bg text-left transition-colors"
-              >
-                <div>
-                  <span className="text-sm text-brand-text">{item.name}</span>
-                  <span className="text-xs text-brand-muted ml-2">{item.category}</span>
-                </div>
-                <span className="text-xs text-brand-muted">+</span>
-              </button>
-            ))}
-            {addableItems.length === 0 && (
-              <p className="px-3 py-3 text-sm text-brand-muted text-center">No items to add</p>
+      {/* Checklist by Category */}
+      {allCategories.map(category => {
+        const listItems = grouped[category] ?? [];
+        const addable = addableByCategory[category] ?? [];
+        const isOpen = addOpenCategory === category;
+        return (
+          <div key={category} className="bg-white rounded-xl border border-brand-border shadow-sm overflow-hidden">
+            <div className="px-4 py-2.5 bg-brand-bg border-b border-brand-border flex justify-between items-center">
+              <h2 className="font-semibold text-sm text-brand-text">{category}</h2>
+              <div className="flex items-center gap-3">
+                <span className="text-xs text-brand-muted">
+                  {listItems.filter(i => i.checked).length}/{listItems.length}
+                </span>
+                {addable.length > 0 && (
+                  <button
+                    onClick={() => setAddOpenCategory(isOpen ? null : category)}
+                    className="text-xs text-sams font-medium hover:underline"
+                  >
+                    {isOpen ? 'Done' : '+ Add'}
+                  </button>
+                )}
+              </div>
+            </div>
+            <div className="divide-y divide-brand-border">
+              {listItems.map(item => (
+                <ChecklistItem
+                  key={item.id}
+                  item={item}
+                  store={list.store}
+                  onToggle={() => toggleItem(item.id)}
+                  onNote={(n) => updateNote(item.id, n)}
+                  onRemove={() => removeItem(item.id)}
+                  onQuantity={(q) => updateQuantity(item.id, q)}
+                />
+              ))}
+            </div>
+            {isOpen && (
+              <div className="border-t border-brand-border divide-y divide-brand-border">
+                {addable.map(catalogItem => (
+                  <button
+                    key={catalogItem.id}
+                    onClick={() => { addItem(catalogItem); }}
+                    className="w-full px-4 py-2.5 flex justify-between items-center hover:bg-brand-bg text-left transition-colors"
+                  >
+                    <div>
+                      <span className="text-sm text-brand-text">{catalogItem.name}</span>
+                      <span className="text-xs text-brand-muted ml-2">{catalogItem.parStock} {catalogItem.unit}</span>
+                    </div>
+                    <span className="text-xs text-brand-muted">{formatCurrency(catalogItem.approxCost)} +</span>
+                  </button>
+                ))}
+              </div>
             )}
           </div>
-        </div>
-      )}
-
-      {/* Checklist by Category */}
-      {Object.entries(grouped).map(([category, items]) => (
-        <div key={category} className="bg-white rounded-xl border border-brand-border shadow-sm overflow-hidden">
-          <div className="px-4 py-2.5 bg-brand-bg border-b border-brand-border flex justify-between">
-            <h2 className="font-semibold text-sm text-brand-text">{category}</h2>
-            <span className="text-xs text-brand-muted">
-              {items.filter(i => i.checked).length}/{items.length}
-            </span>
-          </div>
-          <div className="divide-y divide-brand-border">
-            {items.map(item => (
-              <ChecklistItem
-                key={item.id}
-                item={item}
-                store={list.store}
-                onToggle={() => toggleItem(item.id)}
-                onNote={(n) => updateNote(item.id, n)}
-                onRemove={() => removeItem(item.id)}
-                onQuantity={(q) => updateQuantity(item.id, q)}
-              />
-            ))}
-          </div>
-        </div>
-      ))}
+        );
+      })}
 
       {list.status === 'complete' && (
         <div className="bg-green-50 border border-green-200 rounded-xl p-4 text-center">
