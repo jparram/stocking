@@ -136,23 +136,45 @@ export function useAppState() {
   };
 
   const updateList = async (list: ShoppingList) => {
-    const client = getClient();
-    await client.models.ShoppingList.update({
-      id: list.id,
-      status: list.status,
-      totalSpend: list.totalSpend,
-    });
-    await Promise.all(
-      list.items.map(item =>
-        client.models.ShoppingListItem.update({
-          id: item.id,
-          checked: item.checked,
-          quantity: item.quantity,
-          notes: item.notes,
-        })
-      )
-    );
+    // Optimistic update first so the UI is always responsive
+    const existing = lists.find(l => l.id === list.id);
     setLists(prev => prev.map(l => (l.id === list.id ? list : l)));
+
+    const client = getClient();
+    const existingIds = new Set(existing?.items.map(i => i.id) ?? []);
+    const newIds = new Set(list.items.map(i => i.id));
+
+    try {
+      await client.models.ShoppingList.update({
+        id: list.id,
+        status: list.status,
+        totalSpend: list.totalSpend,
+      });
+
+      await Promise.all([
+        // Create new items
+        ...list.items
+          .filter(item => !existingIds.has(item.id))
+          .map(item => client.models.ShoppingListItem.create({
+            id: item.id, listId: list.id, itemId: item.itemId,
+            name: item.name, category: item.category, store: item.store,
+            quantity: item.quantity, unit: item.unit, approxCost: item.approxCost,
+            checked: item.checked, notes: item.notes,
+          })),
+        // Update existing items
+        ...list.items
+          .filter(item => existingIds.has(item.id))
+          .map(item => client.models.ShoppingListItem.update({
+            id: item.id, checked: item.checked, quantity: item.quantity, notes: item.notes,
+          })),
+        // Delete removed items
+        ...(existing?.items ?? [])
+          .filter(item => !newIds.has(item.id))
+          .map(item => client.models.ShoppingListItem.delete({ id: item.id })),
+      ]);
+    } catch (err) {
+      console.error('[updateList] DynamoDB save failed:', err);
+    }
   };
 
   const deleteList = async (id: string) => {
