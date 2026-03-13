@@ -24,7 +24,10 @@ const schema = a.schema({
       totalSpend: a.float(),
       items: a.hasMany('ShoppingListItem', 'listId'),
     })
-    .authorization(allow => [allow.owner()]),
+    .authorization(allow => [
+      allow.owner(),
+      allow.apiKey().to(['create', 'read', 'update']),
+    ]),
 
   ShoppingListItem: a
     .model({
@@ -40,7 +43,10 @@ const schema = a.schema({
       checked: a.boolean().default(false),
       notes: a.string(),
     })
-    .authorization(allow => [allow.owner()]),
+    .authorization(allow => [
+      allow.owner(),
+      allow.apiKey().to(['create', 'read', 'update']),
+    ]),
 
   WeeklyLog: a
     .model({
@@ -51,7 +57,10 @@ const schema = a.schema({
       itemCount: a.integer().required(),
       completedAt: a.datetime().required(),
     })
-    .authorization(allow => [allow.owner()]),
+    .authorization(allow => [
+      allow.owner(),
+      allow.apiKey().to(['create', 'read']),
+    ]),
 });
 
 export type Schema = ClientSchema<typeof schema>;
@@ -60,5 +69,6 @@ export const data = defineData({
   schema,
   authorizationModes: {
     defaultAuthorizationMode: 'userPool',
+    apiKeyAuthorizationMode: { expiresInDays: 365 },
   },
 });
