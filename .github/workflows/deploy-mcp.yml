@@ -1,0 +1,70 @@
+name: Deploy stocking-mcp to Lambda
+
+on:
+  push:
+    branches: [mcp-server]
+    paths:
+      - 'stocking-mcp/**'
+      - '.github/workflows/deploy-mcp.yml'
+
+jobs:
+  deploy:
+    name: Build & Deploy
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: stocking-mcp/package-lock.json
+
+      - name: Install dependencies
+        working-directory: stocking-mcp
+        run: npm ci
+
+      - name: TypeScript build
+        working-directory: stocking-mcp
+        run: npm run build
+
+      - name: Package for Lambda
+        working-directory: stocking-mcp
+        run: |
+          # Production-only deps for a lean zip
+          npm ci --omit=dev
+          zip -r ../mcp-lambda.zip dist node_modules package.json
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id:     ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region:            ${{ secrets.AWS_REGION }}
+
+      - name: Deploy to Lambda
+        run: |
+          aws lambda update-function-code \
+            --function-name stocking-mcp \
+            --zip-file fileb://mcp-lambda.zip \
+            --region ${{ secrets.AWS_REGION }}
+
+      - name: Wait for update to complete
+        run: |
+          aws lambda wait function-updated \
+            --function-name stocking-mcp \
+            --region ${{ secrets.AWS_REGION }}
+
+      - name: Print Function URL
+        run: |
+          URL=$(aws lambda get-function-url-config \
+            --function-name stocking-mcp \
+            --region ${{ secrets.AWS_REGION }} \
+            --query 'FunctionUrl' \
+            --output text)
+          echo "MCP server live at: $URL"
+          echo "### MCP Server URL" >> $GITHUB_STEP_SUMMARY
+          echo "\`$URL\`" >> $GITHUB_STEP_SUMMARY
