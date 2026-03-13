@@ -22,6 +22,11 @@ export default function ActiveList({ state, loading, onUpdate, onLog }: ActiveLi
   const [krogerResults, setKrogerResults] = useState<KrogerSearchResult[]>([]);
   const [krogerLoading, setKrogerLoading] = useState(false);
   const [krogerError, setKrogerError] = useState<string | null>(null);
+  const [showCustomForm, setShowCustomForm] = useState(false);
+  const [customName, setCustomName] = useState('');
+  const [customQty, setCustomQty] = useState('1');
+  const [customUnit, setCustomUnit] = useState('ea');
+  const [customCost, setCustomCost] = useState('0');
 
   const list = state.lists.find(l => l.id === id);
 
@@ -168,6 +173,28 @@ export default function ActiveList({ state, loading, onUpdate, onLog }: ActiveLi
     }
   };
 
+  const addCustomItem = (category: string) => {
+    const name = customName.trim();
+    if (!name) return;
+    const newItem: ShoppingListItem = {
+      id: generateId(),
+      itemId: `custom-${generateId()}`,
+      name,
+      category,
+      store: list.store === 'sams' ? 'sams' : 'ht',
+      quantity: parseFloat(customQty) || 1,
+      unit: customUnit.trim() || 'ea',
+      approxCost: parseFloat(customCost) || 0,
+      checked: false,
+    };
+    onUpdate({ ...list, items: [...list.items, newItem], updatedAt: new Date().toISOString() });
+    setCustomName('');
+    setCustomQty('1');
+    setCustomUnit('ea');
+    setCustomCost('0');
+    setShowCustomForm(false);
+  };
+
   return (
     <div className="space-y-4">
       {/* Header */}
@@ -224,7 +251,7 @@ export default function ActiveList({ state, loading, onUpdate, onLog }: ActiveLi
                 </span>
                 <button
                   onClick={() => {
-                    if (isOpen) { setAddOpenCategory(null); setKrogerResults([]); setKrogerQuery(''); }
+                    if (isOpen) { setAddOpenCategory(null); setKrogerResults([]); setKrogerQuery(''); setShowCustomForm(false); }
                     else setAddOpenCategory(category);
                   }}
                   className="text-xs text-sams font-medium hover:underline"
@@ -311,6 +338,69 @@ export default function ActiveList({ state, loading, onUpdate, onLog }: ActiveLi
                     ))}
                   </div>
                 )}
+                {/* Custom item */}
+                <div className="border-t border-brand-border">
+                  {!showCustomForm ? (
+                    <button
+                      onClick={() => setShowCustomForm(true)}
+                      className="w-full px-4 py-2.5 text-left text-xs text-brand-muted hover:text-sams hover:bg-brand-bg transition-colors"
+                    >
+                      + Add something not in the list…
+                    </button>
+                  ) : (
+                    <div className="px-4 py-3 space-y-2">
+                      <input
+                        autoFocus
+                        type="text"
+                        value={customName}
+                        onChange={e => setCustomName(e.target.value)}
+                        placeholder="Item name"
+                        className="w-full text-sm border border-brand-border rounded px-2 py-1 focus:outline-none focus:ring-1 focus:ring-sams"
+                      />
+                      <div className="flex gap-2">
+                        <input
+                          type="number"
+                          min="0.1"
+                          step="0.5"
+                          value={customQty}
+                          onChange={e => setCustomQty(e.target.value)}
+                          placeholder="Qty"
+                          className="w-20 text-sm border border-brand-border rounded px-2 py-1 focus:outline-none focus:ring-1 focus:ring-sams"
+                        />
+                        <input
+                          type="text"
+                          value={customUnit}
+                          onChange={e => setCustomUnit(e.target.value)}
+                          placeholder="Unit"
+                          className="w-20 text-sm border border-brand-border rounded px-2 py-1 focus:outline-none focus:ring-1 focus:ring-sams"
+                        />
+                        <input
+                          type="number"
+                          min="0"
+                          step="0.01"
+                          value={customCost}
+                          onChange={e => setCustomCost(e.target.value)}
+                          placeholder="Est. $"
+                          className="w-24 text-sm border border-brand-border rounded px-2 py-1 focus:outline-none focus:ring-1 focus:ring-sams"
+                        />
+                      </div>
+                      <div className="flex gap-2">
+                        <button
+                          onClick={() => addCustomItem(category)}
+                          className="px-3 py-1 bg-sams text-white rounded text-sm font-medium"
+                        >
+                          Add
+                        </button>
+                        <button
+                          onClick={() => setShowCustomForm(false)}
+                          className="px-3 py-1 text-brand-muted text-sm"
+                        >
+                          Cancel
+                        </button>
+                      </div>
+                    </div>
+                  )}
+                </div>
               </div>
             )}
           </div>

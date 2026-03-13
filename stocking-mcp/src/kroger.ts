@@ -5,6 +5,9 @@
  *
  * Pricing requires a locationId — use the Locations API to find your
  * nearest HT store. Pass HT_LOCATION_ID in env vars.
+ *
+ * Fallback: if a location-scoped search returns 0 results (cert env gap),
+ * retries catalog-wide without location (no pricing, but full product coverage).
  */
 
 const TOKEN_URL = 'https://api-ce.kroger.com/v1/connect/oauth2/token';
@@ -62,16 +65,14 @@ export class KrogerClient {
     return this.token;
   }
 
-  async searchProducts(query: string, limit = 10): Promise<KrogerProduct[]> {
-    const token = await this.getToken();
+  private async doSearch(token: string, query: string, limit: number, locationId?: string): Promise<KrogerProduct[]> {
     const params = new URLSearchParams({
       'filter.term': query,
       'filter.limit': String(Math.min(limit, 50)),
     });
-    if (this.locationId) {
-      params.set('filter.locationId', this.locationId);
+    if (locationId) {
+      params.set('filter.locationId', locationId);
     }
-
     const res = await fetch(`${PRODUCTS_URL}?${params}`, {
       headers: { Authorization: `Bearer ${token}` },
     });
@@ -81,5 +82,15 @@ export class KrogerClient {
     }
     const data = await res.json() as { data?: KrogerProduct[] };
     return data.data ?? [];
+  }
+
+  async searchProducts(query: string, limit = 10): Promise<KrogerProduct[]> {
+    const token = await this.getToken();
+    const results = await this.doSearch(token, query, limit, this.locationId);
+    // Fallback: cert env may have gaps per store — retry catalog-wide (no pricing)
+    if (results.length === 0 && this.locationId) {
+      return this.doSearch(token, query, limit);
+    }
+    return results;
   }
 }
