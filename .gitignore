@@ -29,7 +29,6 @@ amplify/cache/
 amplify/.config/local-*
 amplify/backend/amplify-meta.json
 amplify/backend/.temp/
-amplify_outputs.json
 build/
 coverage/
 .env
