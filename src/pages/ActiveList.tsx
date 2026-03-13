@@ -86,6 +86,14 @@ export default function ActiveList({ state, loading, onUpdate, onLog }: ActiveLi
     return !alreadyAdded && matchStore && matchSearch;
   });
 
+  const removeItem = (itemId: string) => {
+    onUpdate({
+      ...list,
+      items: list.items.filter(i => i.id !== itemId),
+      updatedAt: new Date().toISOString(),
+    });
+  };
+
   const addItem = (catalogItem: typeof MASTER_CATALOG[0]) => {
     const newItem: ShoppingListItem = {
       id: generateId(),
@@ -202,6 +210,7 @@ export default function ActiveList({ state, loading, onUpdate, onLog }: ActiveLi
                 store={list.store}
                 onToggle={() => toggleItem(item.id)}
                 onNote={(n) => updateNote(item.id, n)}
+                onRemove={() => removeItem(item.id)}
               />
             ))}
           </div>
@@ -224,9 +233,10 @@ interface ChecklistItemProps {
   store: import('../types').Store;
   onToggle: () => void;
   onNote: (note: string) => void;
+  onRemove: () => void;
 }
 
-function ChecklistItem({ item, store, onToggle, onNote }: ChecklistItemProps) {
+function ChecklistItem({ item, store, onToggle, onNote, onRemove }: ChecklistItemProps) {
   const [editingNote, setEditingNote] = useState(false);
   const [noteText, setNoteText] = useState(item.notes ?? '');
 
@@ -271,13 +281,10 @@ function ChecklistItem({ item, store, onToggle, onNote }: ChecklistItemProps) {
         <div className="text-right text-xs text-brand-muted shrink-0 flex flex-col items-end gap-1">
           <span>{item.quantity} {item.unit}</span>
           <span>{formatCurrency(item.approxCost)}</span>
-          <button
-            onClick={() => setEditingNote(true)}
-            className="text-brand-muted hover:text-sams"
-            title="Add note"
-          >
-            📝
-          </button>
+          <div className="flex gap-2">
+            <button onClick={() => setEditingNote(true)} className="text-brand-muted hover:text-sams" title="Add note">📝</button>
+            <button onClick={onRemove} className="text-brand-muted hover:text-red-500" title="Remove item">✕</button>
+          </div>
         </div>
       </div>
     </div>
