@@ -8,6 +8,88 @@
   }
 }
 
+@media print {
+  @page { margin: 0.6in; size: letter; }
+
+  nav, header, .no-print, .print-hide { display: none !important; }
+
+  body { background: white !important; font-size: 10pt; color: #111; }
+
+  /* Full-width list, no rounded corners or shadows */
+  .print-list {
+    display: block !important;
+    space-y: 0 !important;
+  }
+
+  .print-list .space-y-4 > * + * { margin-top: 0.5rem; }
+
+  /* Card wrappers */
+  .print-list .bg-white {
+    border: 1px solid #ccc !important;
+    border-radius: 4px !important;
+    box-shadow: none !important;
+    margin-bottom: 0.4rem;
+    break-inside: avoid;
+  }
+
+  /* Header card — compact */
+  .print-list .rounded-xl:first-child {
+    margin-bottom: 0.5rem;
+  }
+
+  /* Category header rows */
+  .print-list .bg-brand-bg {
+    background: #e5e7eb !important;
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+    padding: 3px 10px !important;
+  }
+
+  .print-list .bg-brand-bg h2 {
+    font-size: 9pt !important;
+    font-weight: 700 !important;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+  }
+
+  /* Items — tighter rows */
+  .print-list .divide-y > div {
+    padding: 3px 10px !important;
+    break-inside: avoid;
+  }
+
+  /* Checkbox circle → print as empty square */
+  .print-list button[aria-label] {
+    width: 12px !important;
+    height: 12px !important;
+    border: 1.5px solid #555 !important;
+    border-radius: 2px !important;
+    background: white !important;
+    display: inline-block !important;
+    margin-right: 6px;
+    vertical-align: middle;
+    flex-shrink: 0;
+  }
+
+  /* Checked items — strikethrough + gray */
+  .print-list .line-through {
+    color: #9ca3af !important;
+    text-decoration: line-through;
+  }
+
+  /* Cost/qty right-aligned */
+  .print-list .text-right {
+    text-align: right;
+    white-space: nowrap;
+  }
+
+  /* Progress bar — hide on print */
+  .print-list [class*="rounded-full"] { display: none !important; }
+
+  /* Completion banner */
+  .print-list .bg-green-50 { display: none !important; }
+}
+
 @layer utilities {
   .animate-check {
     animation: checkPop 0.3s ease-out;

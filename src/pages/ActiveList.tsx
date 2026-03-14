@@ -196,7 +196,7 @@ export default function ActiveList({ state, loading, onUpdate, onLog }: ActiveLi
   };
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-4 print-list">
       {/* Header */}
       <div className="bg-white rounded-xl border border-brand-border p-4 shadow-sm">
         <div className="flex items-start justify-between mb-3">
@@ -218,13 +218,19 @@ export default function ActiveList({ state, loading, onUpdate, onLog }: ActiveLi
       </div>
 
       {/* Actions */}
-      <div className="flex gap-2 flex-wrap">
+      <div className="flex gap-2 flex-wrap no-print">
         <Link
           to={`/list/${list.id}/share`}
           className="px-3 py-2 bg-white border border-brand-border rounded-lg text-sm font-medium hover:bg-brand-bg transition-colors"
         >
           📤 Share / Export
         </Link>
+        <button
+          onClick={() => window.print()}
+          className="px-3 py-2 bg-white border border-brand-border rounded-lg text-sm font-medium hover:bg-brand-bg transition-colors"
+        >
+          🖨️ Print
+        </button>
         {list.status === 'active' && (
           <button
             onClick={handleMarkComplete}
@@ -254,7 +260,7 @@ export default function ActiveList({ state, loading, onUpdate, onLog }: ActiveLi
                     if (isOpen) { setAddOpenCategory(null); setKrogerResults([]); setKrogerQuery(''); setShowCustomForm(false); }
                     else setAddOpenCategory(category);
                   }}
-                  className="text-xs text-sams font-medium hover:underline"
+                  className="text-xs text-sams font-medium hover:underline print-hide"
                 >
                   {isOpen ? 'Done' : '+ Add'}
                 </button>
@@ -274,7 +280,7 @@ export default function ActiveList({ state, loading, onUpdate, onLog }: ActiveLi
               ))}
             </div>
             {isOpen && (
-              <div className="border-t border-brand-border">
+              <div className="border-t border-brand-border print-hide">
                 {/* Kroger search */}
                 <div className="px-4 py-2.5 flex gap-2 border-b border-brand-border">
                   <input
@@ -490,7 +496,7 @@ function ChecklistItem({ item, store, onToggle, onNote, onRemove, onQuantity }: 
             </button>
           )}
           <span>{formatCurrency(item.approxCost)}</span>
-          <div className="flex gap-2">
+          <div className="flex gap-2 print-hide">
             <button onClick={() => setEditingNote(true)} className="text-brand-muted hover:text-sams" title="Add note">📝</button>
             <button onClick={onRemove} className="text-brand-muted hover:text-red-500" title="Remove item">✕</button>
           </div>
