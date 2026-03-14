@@ -1,9 +1,9 @@
 {
   "auth": {
-    "user_pool_id": "us-east-1_hKUboX77T",
+    "user_pool_id": "us-east-1_Jy0P45eqU",
     "aws_region": "us-east-1",
-    "user_pool_client_id": "35b0p1i9dube94go5metnqanpu",
-    "identity_pool_id": "us-east-1:0fd51811-cb9f-4d34-9ad2-fc77ec2f758c",
+    "user_pool_client_id": "56ljhbv6c8asjovmbktcn5vsr5",
+    "identity_pool_id": "us-east-1:c213c113-1b7a-4f3e-bd4c-0dc332b76b15",
     "mfa_methods": [],
     "standard_required_attributes": [
       "email"
@@ -26,9 +26,9 @@
     "unauthenticated_identities_enabled": true
   },
   "data": {
-    "url": "https://3wzb5dswg5d3lbklqgvdbpxeqi.appsync-api.us-east-1.amazonaws.com/graphql",
+    "url": "https://lxgcygzqmrc3hjkpteykhk5fr4.appsync-api.us-east-1.amazonaws.com/graphql",
     "aws_region": "us-east-1",
-    "api_key": "da2-yr25klsn7nallfxr54hje5bn2u",
+    "api_key": "da2-odprtfoy6jhcloougscqjbcp5q",
     "default_authorization_type": "AMAZON_COGNITO_USER_POOLS",
     "authorization_types": [
       "API_KEY",
@@ -273,7 +273,8 @@
                     "operations": [
                       "create",
                       "read",
-                      "update"
+                      "update",
+                      "delete"
                     ]
                   }
                 ]
@@ -429,7 +430,8 @@
                     "operations": [
                       "create",
                       "read",
-                      "update"
+                      "update",
+                      "delete"
                     ]
                   }
                 ]
@@ -602,11 +604,11 @@
   },
   "storage": {
     "aws_region": "us-east-1",
-    "bucket_name": "amplify-stocking-jparramo-groceryappstoragebucketd-lepzualmvlsk",
+    "bucket_name": "amplify-dx88zh61r0vqn-mas-groceryappstoragebucketd-f04oc6dkrzmb",
     "buckets": [
       {
         "name": "groceryAppStorage",
-        "bucket_name": "amplify-stocking-jparramo-groceryappstoragebucketd-lepzualmvlsk",
+        "bucket_name": "amplify-dx88zh61r0vqn-mas-groceryappstoragebucketd-f04oc6dkrzmb",
         "aws_region": "us-east-1",
         "paths": {
           "share/*": {
