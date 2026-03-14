@@ -144,6 +144,12 @@ export function useAppState() {
     const existingIds = new Set(existing?.items.map(i => i.id) ?? []);
     const newIds = new Set(list.items.map(i => i.id));
 
+    const toCreate = list.items.filter(item => !existingIds.has(item.id));
+    const toUpdate = list.items.filter(item => existingIds.has(item.id));
+    const toDelete = (existing?.items ?? []).filter(item => !newIds.has(item.id));
+
+    console.log('[updateList] create:', toCreate.length, 'update:', toUpdate.length, 'delete:', toDelete.length, toDelete.map(i => i.name));
+
     try {
       await client.models.ShoppingList.update({
         id: list.id,
@@ -151,27 +157,27 @@ export function useAppState() {
         totalSpend: list.totalSpend,
       });
 
-      await Promise.all([
+      const results = await Promise.allSettled([
         // Create new items
-        ...list.items
-          .filter(item => !existingIds.has(item.id))
-          .map(item => client.models.ShoppingListItem.create({
+        ...toCreate.map(item => client.models.ShoppingListItem.create({
             id: item.id, listId: list.id, itemId: item.itemId,
             name: item.name, category: item.category, store: item.store,
             quantity: item.quantity, unit: item.unit, approxCost: item.approxCost,
             checked: item.checked, notes: item.notes,
-          })),
+          }).then(r => { if (r.errors) throw new Error(r.errors.map(e => e.message).join(', ')); return r; })),
         // Update existing items
-        ...list.items
-          .filter(item => existingIds.has(item.id))
-          .map(item => client.models.ShoppingListItem.update({
+        ...toUpdate.map(item => client.models.ShoppingListItem.update({
             id: item.id, checked: item.checked, quantity: item.quantity, notes: item.notes,
-          })),
+          }).then(r => { if (r.errors) throw new Error(r.errors.map(e => e.message).join(', ')); return r; })),
         // Delete removed items
-        ...(existing?.items ?? [])
-          .filter(item => !newIds.has(item.id))
-          .map(item => client.models.ShoppingListItem.delete({ id: item.id })),
+        ...toDelete.map(item => client.models.ShoppingListItem.delete({ id: item.id })
+          .then(r => { if (r.errors) throw new Error(r.errors.map(e => e.message).join(', ')); return r; })),
       ]);
+
+      const failed = results.filter(r => r.status === 'rejected');
+      if (failed.length > 0) {
+        failed.forEach(r => console.error('[updateList] operation failed:', (r as PromiseRejectedResult).reason));
+      }
     } catch (err) {
       console.error('[updateList] DynamoDB save failed:', err);
     }
