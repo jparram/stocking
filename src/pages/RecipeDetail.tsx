@@ -208,10 +208,17 @@ interface DeleteDialogProps {
 
 function DeleteDialog({ recipeName, onConfirm, onClose }: DeleteDialogProps) {
   const [deleting, setDeleting] = useState(false);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
 
   async function handleConfirm() {
     setDeleting(true);
-    await onConfirm();
+    setDeleteError(null);
+    try {
+      await onConfirm();
+    } catch (err) {
+      setDeleteError(err instanceof Error ? err.message : 'Failed to delete recipe. Please try again.');
+      setDeleting(false);
+    }
   }
 
   return (
@@ -221,6 +228,9 @@ function DeleteDialog({ recipeName, onConfirm, onClose }: DeleteDialogProps) {
         <p className="text-brand-muted text-sm">
           Delete <span className="font-semibold text-brand-text">{recipeName}</span>? This cannot be undone.
         </p>
+        {deleteError && (
+          <p className="text-red-600 text-sm">{deleteError}</p>
+        )}
         <div className="flex gap-3">
           <button
             type="button"
