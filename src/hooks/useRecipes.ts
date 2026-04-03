@@ -223,17 +223,34 @@ export function useRecipes() {
 
   async function deleteRecipe(id: string): Promise<void> {
     const client = getClient();
-    // Delete all ingredients first
-    const { data: ings } = await client.models.RecipeIngredient.list({
-      filter: { recipeId: { eq: id } },
-    });
-    await Promise.all(ings.map(i => client.models.RecipeIngredient.delete({ id: i.id })));
-    // Then delete the recipe
-    const { errors } = await client.models.Recipe.delete({ id });
-    if (errors?.length) {
-      throw new Error(errors.map(e => e.message).join(', '));
+    try {
+      // Delete all ingredients first
+      const { data: ings = [], errors: listErrors } = await client.models.RecipeIngredient.list({
+        filter: { recipeId: { eq: id } },
+      });
+      if (listErrors?.length) {
+        throw new Error(listErrors.map(e => e.message).join(', '));
+      }
+
+      await Promise.all(
+        ings.map(async i => {
+          const { errors } = await client.models.RecipeIngredient.delete({ id: i.id });
+          if (errors?.length) {
+            throw new Error(errors.map(e => e.message).join(', '));
+          }
+        }),
+      );
+
+      // Then delete the recipe
+      const { errors } = await client.models.Recipe.delete({ id });
+      if (errors?.length) {
+        throw new Error(errors.map(e => e.message).join(', '));
+      }
+
+      setRecipes(prev => prev.filter(r => r.id !== id));
+    } catch (error) {
+      throw error instanceof Error ? error : new Error('Failed to delete recipe');
     }
-    setRecipes(prev => prev.filter(r => r.id !== id));
   }
 
   return {
