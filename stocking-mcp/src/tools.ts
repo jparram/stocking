@@ -92,7 +92,10 @@ export const TOOL_DEFINITIONS = [
     description:
       'Creates a new shopping list in the app and saves it to DynamoDB. '
       + 'Appears live in the Stocking app immediately. '
-      + 'Use suggest_items first, then call this with confirmed items.',
+      + 'Use suggest_items first, then call this with confirmed items. '
+      + 'Items can be catalog items (using item_id) or custom one-off items '
+      + '(using item_id="custom" and providing a name). Custom items are useful '
+      + 'for seasonal or holiday purchases not in the master catalog.',
     inputSchema: {
       type: 'object',
       required: ['store', 'items'],
@@ -106,7 +109,18 @@ export const TOOL_DEFINITIONS = [
             type: 'object',
             required: ['item_id', 'quantity'],
             properties: {
-              item_id:  { type: 'string', description: 'ID from catalog (e.g. sc-001, ht-013)' },
+              item_id:  {
+                type: 'string',
+                description:
+                  'ID from catalog (e.g. sc-001, ht-013), or "custom" for '
+                  + 'off-catalog items. When using "custom", the name field is required.',
+              },
+              name:     {
+                type: 'string',
+                description:
+                  'Display name for the item. Required when item_id is "custom". '
+                  + 'Optional override for catalog items.',
+              },
               quantity: { type: 'number' },
               notes:    { type: 'string' },
             },
@@ -257,17 +271,50 @@ async function dispatch(
       const store   = args['store'] as string;
       const weekOf  = (args['week_of'] as string) ?? cadence.getMondayOf();
       const rawItems = args['items'] as Array<{
-        item_id: string; quantity: number; notes?: string;
+        item_id: string; name?: string; quantity: number; notes?: string;
       }>;
 
       const resolvedItems = rawItems.map((ri) => {
-        const cat = catalog.find((c) => c.id === ri.item_id);
-        if (!cat) throw new Error(`Unknown item_id: ${ri.item_id}`);
+        // ── Custom (off-catalog) item ──────────────────────────────────────────
+        // Triggered by item_id === 'custom' OR when item_id is not found in
+        // the catalog but a name is supplied.
+        const isCustomId = ri.item_id === 'custom';
+        const cat = isCustomId ? undefined : catalog.find((c) => c.id === ri.item_id);
+
+        if (!cat) {
+          // Require a name for items that can't be resolved from the catalog
+          const displayName = ri.name?.trim();
+          if (!displayName) {
+            throw new Error(
+              `Unknown item_id "${ri.item_id}" and no name provided. `
+              + `Either use a valid catalog ID or pass item_id="custom" with a name.`
+            );
+          }
+          // Build a synthetic catalog-shaped entry for the custom item
+          return {
+            itemId:     ri.item_id === 'custom' ? `custom-${Date.now()}-${Math.random().toString(36).slice(2, 7)}` : ri.item_id,
+            name:       displayName,
+            category:   'Custom',
+            store:      store === 'both' ? 'both' : store,
+            quantity:   ri.quantity,
+            unit:       '',
+            approxCost: 0,
+            checked:    false,
+            notes:      ri.notes ?? '',
+          };
+        }
+
+        // ── Catalog item (normal path) ─────────────────────────────────────────
         return {
-          itemId: ri.item_id, name: cat.name, category: cat.category,
-          store: cat.store, quantity: ri.quantity, unit: cat.unit,
-          approxCost: cat.approxCost, checked: false,
-          notes: ri.notes ?? cat.notes ?? '',
+          itemId:     ri.item_id,
+          name:       ri.name?.trim() || cat.name,   // allow name override
+          category:   cat.category,
+          store:      cat.store,
+          quantity:   ri.quantity,
+          unit:       cat.unit,
+          approxCost: cat.approxCost,
+          checked:    false,
+          notes:      ri.notes ?? cat.notes ?? '',
         };
       });
 
