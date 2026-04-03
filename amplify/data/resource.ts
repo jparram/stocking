@@ -61,6 +61,40 @@ const schema = a.schema({
       allow.owner(),
       allow.publicApiKey().to(['create', 'read']),
     ]),
+
+  Recipe: a
+    .model({
+      name: a.string().required(),
+      description: a.string(),
+      servings: a.integer(),
+      prepMinutes: a.integer(),
+      cookMinutes: a.integer(),
+      tags: a.string().array(),
+      sourceUrl: a.string(),
+      notes: a.string(),
+      isFavorite: a.boolean(),
+      lastMadeDate: a.string(),
+      ingredients: a.hasMany('RecipeIngredient', 'recipeId'),
+    })
+    .authorization(allow => [
+      allow.owner(),
+      allow.publicApiKey().to(['create', 'read', 'update', 'delete']),
+    ]),
+
+  RecipeIngredient: a
+    .model({
+      recipeId: a.id().required(),
+      recipe: a.belongsTo('Recipe', 'recipeId'),
+      name: a.string().required(),
+      amount: a.float(),
+      unit: a.string(),
+      catalogItemId: a.string(),
+      notes: a.string(),
+    })
+    .authorization(allow => [
+      allow.owner(),
+      allow.publicApiKey().to(['create', 'read', 'update', 'delete']),
+    ]),
 });
 
 export type Schema = ClientSchema<typeof schema>;
