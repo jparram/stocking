@@ -32,6 +32,28 @@ export interface ItemInput {
   notes: string;
 }
 
+export interface RecipeInput {
+  name: string;
+  description?: string;
+  servings?: number;
+  prepMinutes?: number;
+  cookMinutes?: number;
+  tags?: string[];
+  sourceUrl?: string;
+  notes?: string;
+  isFavorite?: boolean;
+  lastMadeDate?: string;
+}
+
+export interface RecipeIngredientInput {
+  name: string;
+  amount?: number;
+  unit?: string;
+  catalogItemId?: string;
+  notes?: string;
+  sortOrder?: number;
+}
+
 export class GraphQLClient {
   constructor(
     private endpoint: string,
@@ -221,5 +243,240 @@ export class GraphQLClient {
       { input }
     );
     return data.updateShoppingList;
+  }
+
+  // ── ADD ITEM TO EXISTING LIST ─────────────────────────────────────────────
+  async addShoppingListItem(
+    listId: string,
+    item: ItemInput
+  ): Promise<{ id: string }> {
+    const data = await this.query<{ createShoppingListItem: { id: string } }>(
+      `mutation CreateShoppingListItem($input: CreateShoppingListItemInput!) {
+        createShoppingListItem(input: $input) { id }
+      }`,
+      {
+        input: {
+          listId,
+          itemId:     item.itemId,
+          name:       item.name,
+          category:   item.category,
+          store:      item.store,
+          quantity:   item.quantity,
+          unit:       item.unit,
+          approxCost: item.approxCost,
+          checked:    item.checked,
+          notes:      item.notes,
+        },
+      }
+    );
+    return data.createShoppingListItem;
+  }
+
+  // ── CREATE RECIPE ─────────────────────────────────────────────────────────
+  async createRecipe(
+    input: RecipeInput,
+    ingredients: RecipeIngredientInput[]
+  ): Promise<{ id: string }> {
+    const recipeInput: Record<string, unknown> = { name: input.name };
+    if (input.description  !== undefined) recipeInput['description']  = input.description;
+    if (input.servings     !== undefined) recipeInput['servings']     = input.servings;
+    if (input.prepMinutes  !== undefined) recipeInput['prepMinutes']  = input.prepMinutes;
+    if (input.cookMinutes  !== undefined) recipeInput['cookMinutes']  = input.cookMinutes;
+    if (input.tags         !== undefined) recipeInput['tags']         = input.tags;
+    if (input.sourceUrl    !== undefined) recipeInput['sourceUrl']    = input.sourceUrl;
+    if (input.notes        !== undefined) recipeInput['notes']        = input.notes;
+    if (input.isFavorite   !== undefined) recipeInput['isFavorite']   = input.isFavorite;
+    if (input.lastMadeDate !== undefined) recipeInput['lastMadeDate'] = input.lastMadeDate;
+
+    const recipeData = await this.query<{ createRecipe: { id: string } }>(
+      `mutation CreateRecipe($input: CreateRecipeInput!) {
+        createRecipe(input: $input) { id }
+      }`,
+      { input: recipeInput }
+    );
+
+    const recipeId = recipeData.createRecipe.id;
+
+    for (let i = 0; i < ingredients.length; i++) {
+      await this.createRecipeIngredient(recipeId, { ...ingredients[i], sortOrder: ingredients[i].sortOrder ?? i });
+    }
+
+    return { id: recipeId };
+  }
+
+  // ── GET RECIPE ────────────────────────────────────────────────────────────
+  async getRecipe(id: string): Promise<unknown> {
+    const data = await this.query<{
+      getRecipe: Record<string, unknown> & {
+        ingredients: { items: Array<Record<string, unknown>> };
+      };
+    }>(
+      `query GetRecipe($id: ID!) {
+        getRecipe(id: $id) {
+          id name description servings prepMinutes cookMinutes
+          tags sourceUrl notes isFavorite lastMadeDate createdAt updatedAt
+          ingredients {
+            items {
+              id recipeId name amount unit catalogItemId notes sortOrder createdAt updatedAt
+            }
+          }
+        }
+      }`,
+      { id }
+    );
+
+    const recipe = data.getRecipe;
+    return {
+      ...recipe,
+      ingredients: recipe.ingredients.items,
+    };
+  }
+
+  // ── LIST RECIPES ──────────────────────────────────────────────────────────
+  async listRecipes(
+    limit = 20,
+    tag?: string,
+    favoritesOnly?: boolean
+  ): Promise<unknown[]> {
+    const data = await this.query<{
+      listRecipes: {
+        items: Array<
+          Record<string, unknown> & {
+            ingredients: { items: Array<Record<string, unknown>> };
+          }
+        >;
+      };
+    }>(
+      `query ListRecipes($limit: Int) {
+        listRecipes(limit: $limit) {
+          items {
+            id name description tags servings prepMinutes cookMinutes
+            isFavorite lastMadeDate
+            ingredients { items { id } }
+          }
+        }
+      }`,
+      { limit }
+    );
+
+    let recipes = data.listRecipes.items;
+    if (favoritesOnly) recipes = recipes.filter((r) => r['isFavorite'] === true);
+    if (tag) recipes = recipes.filter((r) => {
+      const tags = r['tags'] as string[] | null;
+      return tags && tags.includes(tag);
+    });
+
+    return recipes.slice(0, limit).map((r) => ({
+      id:              r['id'],
+      name:            r['name'],
+      description:     r['description'],
+      tags:            r['tags'],
+      servings:        r['servings'],
+      prepMinutes:     r['prepMinutes'],
+      cookMinutes:     r['cookMinutes'],
+      isFavorite:      r['isFavorite'],
+      lastMadeDate:    r['lastMadeDate'],
+      ingredientCount: (r['ingredients'] as { items: unknown[] }).items.length,
+    }));
+  }
+
+  // ── UPDATE RECIPE ─────────────────────────────────────────────────────────
+  async updateRecipe(
+    id: string,
+    updates: Partial<RecipeInput>
+  ): Promise<unknown> {
+    const input: Record<string, unknown> = { id };
+    if (updates.name         !== undefined) input['name']         = updates.name;
+    if (updates.description  !== undefined) input['description']  = updates.description;
+    if (updates.servings     !== undefined) input['servings']     = updates.servings;
+    if (updates.prepMinutes  !== undefined) input['prepMinutes']  = updates.prepMinutes;
+    if (updates.cookMinutes  !== undefined) input['cookMinutes']  = updates.cookMinutes;
+    if (updates.tags         !== undefined) input['tags']         = updates.tags;
+    if (updates.sourceUrl    !== undefined) input['sourceUrl']    = updates.sourceUrl;
+    if (updates.notes        !== undefined) input['notes']        = updates.notes;
+    if (updates.isFavorite   !== undefined) input['isFavorite']   = updates.isFavorite;
+    if (updates.lastMadeDate !== undefined) input['lastMadeDate'] = updates.lastMadeDate;
+
+    const data = await this.query<{ updateRecipe: unknown }>(
+      `mutation UpdateRecipe($input: UpdateRecipeInput!) {
+        updateRecipe(input: $input) {
+          id name description tags servings prepMinutes cookMinutes
+          isFavorite lastMadeDate updatedAt
+        }
+      }`,
+      { input }
+    );
+    return data.updateRecipe;
+  }
+
+  // ── DELETE RECIPE ─────────────────────────────────────────────────────────
+  async deleteRecipe(id: string): Promise<{ deletedIngredientCount: number }> {
+    // 1. Fetch all ingredient IDs (AppSync does not cascade deletes)
+    const recipeData = await this.query<{
+      getRecipe: { ingredients: { items: Array<{ id: string }> } };
+    }>(
+      `query GetRecipeIngredientIds($id: ID!) {
+        getRecipe(id: $id) {
+          ingredients { items { id } }
+        }
+      }`,
+      { id }
+    );
+
+    const ingredientIds = recipeData.getRecipe.ingredients.items.map((i) => i.id);
+
+    // 2. Delete each ingredient
+    for (const ingredientId of ingredientIds) {
+      await this.query(
+        `mutation DeleteRecipeIngredient($input: DeleteRecipeIngredientInput!) {
+          deleteRecipeIngredient(input: $input) { id }
+        }`,
+        { input: { id: ingredientId } }
+      );
+    }
+
+    // 3. Delete the recipe itself
+    await this.query(
+      `mutation DeleteRecipe($input: DeleteRecipeInput!) {
+        deleteRecipe(input: $input) { id }
+      }`,
+      { input: { id } }
+    );
+
+    return { deletedIngredientCount: ingredientIds.length };
+  }
+
+  // ── CREATE RECIPE INGREDIENT(S) ───────────────────────────────────────────
+  async createRecipeIngredient(
+    recipeId: string,
+    ingredient: RecipeIngredientInput
+  ): Promise<{ id: string; name: string }> {
+    const input: Record<string, unknown> = { recipeId, name: ingredient.name };
+    if (ingredient.amount       !== undefined) input['amount']       = ingredient.amount;
+    if (ingredient.unit         !== undefined) input['unit']         = ingredient.unit;
+    if (ingredient.catalogItemId !== undefined) input['catalogItemId'] = ingredient.catalogItemId;
+    if (ingredient.notes        !== undefined) input['notes']        = ingredient.notes;
+    if (ingredient.sortOrder    !== undefined) input['sortOrder']    = ingredient.sortOrder;
+
+    const data = await this.query<{
+      createRecipeIngredient: { id: string; name: string };
+    }>(
+      `mutation CreateRecipeIngredient($input: CreateRecipeIngredientInput!) {
+        createRecipeIngredient(input: $input) { id name }
+      }`,
+      { input }
+    );
+    return data.createRecipeIngredient;
+  }
+
+  // ── DELETE RECIPE INGREDIENT ──────────────────────────────────────────────
+  async deleteRecipeIngredient(ingredientId: string): Promise<{ id: string }> {
+    const data = await this.query<{ deleteRecipeIngredient: { id: string } }>(
+      `mutation DeleteRecipeIngredient($input: DeleteRecipeIngredientInput!) {
+        deleteRecipeIngredient(input: $input) { id }
+      }`,
+      { input: { id: ingredientId } }
+    );
+    return data.deleteRecipeIngredient;
   }
 }
