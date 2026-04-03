@@ -4,6 +4,7 @@ const NAV_LINKS = [
   { to: '/', label: 'Dashboard', icon: '🏠' },
   { to: '/stocking-guide', label: 'Guide', icon: '📋' },
   { to: '/list/new', label: 'New List', icon: '➕' },
+  { to: '/recipes', label: 'Recipes', icon: '🍳' },
   { to: '/history', label: 'History', icon: '📊' },
   { to: '/settings', label: 'Settings', icon: '⚙️' },
 ];

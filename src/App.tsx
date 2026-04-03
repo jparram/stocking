@@ -7,6 +7,7 @@ import ActiveList from './pages/ActiveList';
 import ShareList from './pages/ShareList';
 import History from './pages/History';
 import Settings from './pages/Settings';
+import RecipeList from './pages/RecipeList';
 import { useAppState } from './hooks/useAppState';
 
 export default function App() {
@@ -34,6 +35,27 @@ export default function App() {
           <Route
             path="/settings"
             element={<Settings state={state} onUpdate={updateSettings} />}
+          />
+          <Route path="/recipes" element={<RecipeList />} />
+          <Route
+            path="/recipes/new"
+            element={
+              <div className="text-center py-16">
+                <div className="text-6xl mb-4">📝</div>
+                <h2 className="text-2xl font-bold mb-2 text-brand-text">New Recipe</h2>
+                <p className="text-brand-muted">Coming soon!</p>
+              </div>
+            }
+          />
+          <Route
+            path="/recipes/:id"
+            element={
+              <div className="text-center py-16">
+                <div className="text-6xl mb-4">📖</div>
+                <h2 className="text-2xl font-bold mb-2 text-brand-text">Recipe Detail</h2>
+                <p className="text-brand-muted">Coming soon!</p>
+              </div>
+            }
           />
           <Route
             path="*"
