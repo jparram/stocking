@@ -73,7 +73,7 @@ const schema = a.schema({
       sourceUrl: a.string(),
       notes: a.string(),
       isFavorite: a.boolean(),
-      lastMadeDate: a.string(),
+      lastMadeDate: a.date(),
       ingredients: a.hasMany('RecipeIngredient', 'recipeId'),
     })
     .authorization(allow => [
@@ -88,7 +88,7 @@ const schema = a.schema({
       name: a.string().required(),
       amount: a.float(),
       unit: a.string(),
-      catalogItemId: a.string(),
+      catalogItemId: a.string(), // optional ref to masterCatalog item ID (e.g. "ht-006")
       notes: a.string(),
     })
     .authorization(allow => [
