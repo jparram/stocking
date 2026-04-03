@@ -75,6 +75,19 @@ export interface Recipe {
   updatedAt: string;
 }
 
+export interface RecipeIngredient {
+  id: string;
+  recipeId: string;
+  name: string;
+  amount?: number;
+  unit?: string;
+  catalogItemId?: string;
+  notes?: string;
+  sortOrder?: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
 export interface AppState {
   lists: ShoppingList[];
   weeklyLogs: WeeklyLog[];

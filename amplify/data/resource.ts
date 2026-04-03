@@ -90,6 +90,7 @@ const schema = a.schema({
       unit: a.string(),
       catalogItemId: a.string(), // optional ref to masterCatalog item ID (e.g. "ht-006")
       notes: a.string(),
+      sortOrder: a.integer(), // display order within the recipe
     })
     .authorization(allow => [
       allow.owner(),
