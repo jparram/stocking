@@ -7,7 +7,7 @@ import type { GraphQLClient } from './graphql.js';
 import type { CatalogItem } from './catalog.js';
 import type { KrogerClient } from './kroger.js';
 
-// ── Reconciliation types ──────────────────────────────────────────────────────
+// ── Types ─────────────────────────────────────────────────────────────────────
 
 export interface InstacartLineItem {
   name: string;
@@ -27,13 +27,10 @@ interface ListItem {
 function namesMatch(listName: string, instacartName: string): boolean {
   const normalize = (s: string) =>
     s.toLowerCase().replace(/[^a-z0-9 ]/g, ' ').split(/\s+/).filter(Boolean);
-
   const listWords = normalize(listName);
   const instWords = normalize(instacartName);
-
   if (instacartName.toLowerCase().includes(listName.toLowerCase())) return true;
   if (listName.toLowerCase().includes(instacartName.toLowerCase())) return true;
-
   const significant = listWords.filter((w) => w.length >= 4);
   return significant.some((w) => instWords.includes(w));
 }
@@ -82,6 +79,8 @@ function resolveItem(
   };
 }
 
+// ── Tool definitions ──────────────────────────────────────────────────────────
+
 export const TOOL_DEFINITIONS = [
   {
     name: 'get_due_store',
@@ -119,13 +118,12 @@ export const TOOL_DEFINITIONS = [
       + 'Appears live in the Stocking app immediately. '
       + 'Use suggest_items first, then call this with confirmed items. '
       + 'Items can be catalog items (using item_id) or custom one-off items '
-      + '(using item_id="custom" and providing a name). Custom items are useful '
-      + 'for seasonal or holiday purchases not in the master catalog.',
+      + '(using item_id="custom" and providing a name).',
     inputSchema: {
       type: 'object',
       required: ['store', 'items'],
       properties: {
-        store: { type: 'string', enum: ['sams', 'ht', 'both'] },
+        store:   { type: 'string', enum: ['sams', 'ht', 'both'] },
         name:    { type: 'string', description: 'List name (auto-generated if omitted)' },
         week_of: { type: 'string', description: 'ISO Monday date for the shopping week (defaults to current week)' },
         items: {
@@ -134,14 +132,8 @@ export const TOOL_DEFINITIONS = [
             type: 'object',
             required: ['item_id', 'quantity'],
             properties: {
-              item_id:  {
-                type: 'string',
-                description: 'ID from catalog (e.g. sc-001, ht-013), or "custom" for off-catalog items.',
-              },
-              name:     {
-                type: 'string',
-                description: 'Display name. Required when item_id is "custom". Optional override for catalog items.',
-              },
+              item_id:  { type: 'string', description: 'Catalog ID or "custom" for off-catalog items.' },
+              name:     { type: 'string', description: 'Display name. Required when item_id is "custom".' },
               quantity: { type: 'number' },
               notes:    { type: 'string' },
             },
@@ -154,9 +146,8 @@ export const TOOL_DEFINITIONS = [
     name: 'add_list_item',
     description:
       'Appends one or more items to an existing shopping list. '
-      + 'Use this to add forgotten or ad-hoc items to a list that already exists '
-      + 'rather than creating a new list. Accepts the same item format as '
-      + 'create_shopping_list: catalog IDs or item_id="custom" with a name.',
+      + 'Use this to add forgotten or ad-hoc items rather than creating a new list. '
+      + 'Accepts the same item format as create_shopping_list.',
     inputSchema: {
       type: 'object',
       required: ['list_id', 'store', 'items'],
@@ -169,19 +160,47 @@ export const TOOL_DEFINITIONS = [
             type: 'object',
             required: ['item_id', 'quantity'],
             properties: {
-              item_id:  {
-                type: 'string',
-                description: 'Catalog ID or "custom" for off-catalog items.',
-              },
-              name:     {
-                type: 'string',
-                description: 'Display name. Required when item_id is "custom".',
-              },
+              item_id:  { type: 'string', description: 'Catalog ID or "custom" for off-catalog items.' },
+              name:     { type: 'string', description: 'Display name. Required when item_id is "custom".' },
               quantity: { type: 'number' },
               notes:    { type: 'string' },
             },
           },
         },
+      },
+    },
+  },
+  {
+    name: 'delete_list_item',
+    description:
+      'Removes a single item from a shopping list by its ShoppingListItem ID. '
+      + 'Use get_list_items first to find the item ID. '
+      + 'Useful for correcting mistakes after add_list_item or create_shopping_list.',
+    inputSchema: {
+      type: 'object',
+      required: ['list_id', 'item_id'],
+      properties: {
+        list_id: { type: 'string', description: 'The list the item belongs to (for confirmation context)' },
+        item_id: { type: 'string', description: 'ShoppingListItem ID to delete (from get_list_items)' },
+      },
+    },
+  },
+  {
+    name: 'spend_summary',
+    description:
+      'Summarises actual grocery spend across completed lists within a date range. '
+      + 'Returns total spend, per-store breakdown (sams / ht), number of runs, '
+      + 'average spend per run, weekly and monthly averages, and — if an '
+      + 'annual_target is provided — pace tracking showing projected annual spend '
+      + 'vs target and whether you are over or under budget. '
+      + 'Defaults to the current calendar year if no dates are supplied.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        from:          { type: 'string', description: 'ISO date start of range (inclusive). Defaults to Jan 1 of current year.' },
+        to:            { type: 'string', description: 'ISO date end of range (inclusive). Defaults to today.' },
+        store:         { type: 'string', enum: ['sams', 'ht'], description: 'Filter to a single store (omit for both).' },
+        annual_target: { type: 'number', description: 'Optional annual grocery budget target in dollars for pace tracking.' },
       },
     },
   },
@@ -240,18 +259,15 @@ export const TOOL_DEFINITIONS = [
       + 'line items (name, status, quantity, price_paid). '
       + 'Automatically matches list items to Instacart items by name, corrects '
       + 'check states (delivered → checked, refunded → unchecked), updates the '
-      + 'actual spend, and returns a full diff: matched items, list items with '
-      + 'no Instacart match, and Instacart purchases not on the list. '
-      + 'Works on both active and complete lists.',
+      + 'actual spend, and returns a full diff.',
     inputSchema: {
       type: 'object',
       required: ['list_id', 'actual_spend', 'instacart_items'],
       properties: {
-        list_id:      { type: 'string', description: 'The shopping list ID to reconcile' },
-        actual_spend: { type: 'number', description: 'Total amount actually paid (from Instacart order total)' },
+        list_id:      { type: 'string' },
+        actual_spend: { type: 'number' },
         instacart_items: {
           type: 'array',
-          description: 'Line items from the Instacart order',
           items: {
             type: 'object',
             required: ['name', 'status'],
@@ -271,18 +287,19 @@ export const TOOL_DEFINITIONS = [
     name: 'search_products',
     description:
       'Searches the Kroger/Harris Teeter product catalog for items by keyword. '
-      + 'Returns product names, sizes, and approximate prices. '
-      + 'Use this to discover HT products that are not yet in the master catalog.',
+      + 'Returns product names, sizes, and approximate prices.',
     inputSchema: {
       type: 'object',
       required: ['query'],
       properties: {
-        query: { type: 'string', description: 'Product search term (e.g. "organic milk", "bread")' },
+        query: { type: 'string', description: 'Product search term' },
         limit: { type: 'number', description: 'Max results (default 10, max 50)' },
       },
     },
   },
 ];
+
+// ── Handler ───────────────────────────────────────────────────────────────────
 
 export async function handleToolCall(
   name: string,
@@ -305,6 +322,7 @@ async function dispatch(
   kroger?: KrogerClient
 ): Promise<unknown> {
   switch (name) {
+
     case 'get_due_store': {
       const date = args['date'] ? new Date(args['date'] as string) : new Date();
       return cadence.getDueStore(date);
@@ -323,23 +341,15 @@ async function dispatch(
       const rawItems = args['items'] as Array<{
         item_id: string; name?: string; quantity: number; notes?: string;
       }>;
-
       const resolvedItems = rawItems.map((ri) => resolveItem(ri, catalog, store));
-
       const storeName =
-        store === 'sams' ? "Sam's Club"
-        : store === 'ht' ? 'Harris Teeter' : 'Both Stores';
-      const listName =
-        (args['name'] as string) ?? `Week of ${weekOf} — ${storeName}`;
-      const totalEstimate = resolvedItems.reduce(
-        (sum, i) => sum + i.approxCost * i.quantity, 0
-      );
-
+        store === 'sams' ? "Sam's Club" : store === 'ht' ? 'Harris Teeter' : 'Both Stores';
+      const listName = (args['name'] as string) ?? `Week of ${weekOf} — ${storeName}`;
+      const totalEstimate = resolvedItems.reduce((sum, i) => sum + i.approxCost * i.quantity, 0);
       const list = await gql.createShoppingList({
         name: listName, weekOf, store, status: 'active',
         totalSpend: totalEstimate, items: resolvedItems,
       });
-
       return {
         success: true, list_id: list.id, name: listName, store,
         week_of: weekOf, item_count: resolvedItems.length,
@@ -354,21 +364,116 @@ async function dispatch(
       const rawItems = args['items'] as Array<{
         item_id: string; name?: string; quantity: number; notes?: string;
       }>;
-
       const resolvedItems = rawItems.map((ri) => resolveItem(ri, catalog, store));
       const added: { id: string; name: string }[] = [];
-
       for (const item of resolvedItems) {
         const result = await gql.addItemToList(listId, item);
         added.push({ id: result.id, name: item.name });
       }
+      return {
+        success: true, list_id: listId,
+        items_added: added.length, added,
+        message: `${added.length} item(s) added to list.`,
+      };
+    }
 
+    case 'delete_list_item': {
+      const itemId = args['item_id'] as string;
+      const listId = args['list_id'] as string;
+      const result = await gql.deleteListItem(itemId);
       return {
         success: true,
         list_id: listId,
-        items_added: added.length,
-        added,
-        message: `${added.length} item(s) added to list.`,
+        deleted_item_id: result.id,
+        message: `Item ${result.id} removed from list.`,
+      };
+    }
+
+    case 'spend_summary': {
+      const now    = new Date();
+      const fromStr = (args['from'] as string | undefined) ?? `${now.getFullYear()}-01-01`;
+      const toStr   = (args['to']   as string | undefined) ?? now.toISOString().slice(0, 10);
+      const storeFilter    = args['store'] as string | undefined;
+      const annualTarget   = args['annual_target'] as number | undefined;
+
+      const fromDate = new Date(fromStr);
+      const toDate   = new Date(toStr);
+      toDate.setHours(23, 59, 59, 999);
+
+      const allLists = await gql.listAllCompletedLists();
+
+      // Filter to date range and optional store
+      const filtered = allLists.filter((l) => {
+        const d = new Date(l.createdAt);
+        return d >= fromDate && d <= toDate
+          && (!storeFilter || l.store === storeFilter);
+      });
+
+      if (filtered.length === 0) {
+        return {
+          from: fromStr, to: toStr, store: storeFilter ?? 'all',
+          total_spend: 0, runs: 0,
+          message: 'No completed lists found in this date range.',
+        };
+      }
+
+      // Totals
+      const totalSpend = filtered.reduce((s, l) => s + (l.totalSpend ?? 0), 0);
+      const samSpend   = filtered.filter((l) => l.store === 'sams').reduce((s, l) => s + (l.totalSpend ?? 0), 0);
+      const htSpend    = filtered.filter((l) => l.store === 'ht').reduce((s, l) => s + (l.totalSpend ?? 0), 0);
+      const samRuns    = filtered.filter((l) => l.store === 'sams').length;
+      const htRuns     = filtered.filter((l) => l.store === 'ht').length;
+
+      // Averages
+      const rangeDays  = Math.max(1, Math.round((toDate.getTime() - fromDate.getTime()) / 86400000));
+      const rangeWeeks = rangeDays / 7;
+      const avgPerRun  = totalSpend / filtered.length;
+      const avgWeekly  = totalSpend / rangeWeeks;
+      const avgMonthly = avgWeekly * 4.33;
+
+      // Pace vs annual target
+      let pace: Record<string, unknown> | undefined;
+      if (annualTarget !== undefined) {
+        const yearStart    = new Date(`${now.getFullYear()}-01-01`);
+        const daysElapsed  = Math.max(1, Math.round((now.getTime() - yearStart.getTime()) / 86400000));
+        const daysInYear   = 365;
+        const paceAnnual   = (totalSpend / daysElapsed) * daysInYear;
+        const onTrack      = paceAnnual <= annualTarget;
+        const delta        = annualTarget - paceAnnual;
+        pace = {
+          annual_target:    annualTarget,
+          projected_annual: Math.round(paceAnnual * 100) / 100,
+          delta:            Math.round(delta * 100) / 100,
+          status:           onTrack ? 'on track ✅' : 'over budget ⚠️',
+          days_elapsed:     daysElapsed,
+        };
+      }
+
+      // Per-list breakdown (sorted by date)
+      const runs = filtered
+        .sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime())
+        .map((l) => ({
+          date:  l.createdAt.slice(0, 10),
+          store: l.store,
+          name:  l.name,
+          spend: l.totalSpend,
+        }));
+
+      return {
+        from: fromStr,
+        to:   toStr,
+        store: storeFilter ?? 'all',
+        total_spend:  Math.round(totalSpend  * 100) / 100,
+        by_store: {
+          sams: { spend: Math.round(samSpend * 100) / 100, runs: samRuns },
+          ht:   { spend: Math.round(htSpend  * 100) / 100, runs: htRuns  },
+        },
+        runs_total:   filtered.length,
+        avg_per_run:  Math.round(avgPerRun  * 100) / 100,
+        avg_weekly:   Math.round(avgWeekly  * 100) / 100,
+        avg_monthly:  Math.round(avgMonthly * 100) / 100,
+        ...(pace ? { pace } : {}),
+        runs,
       };
     }
 
@@ -392,8 +497,8 @@ async function dispatch(
 
     case 'complete_list':
       return gql.completeList(
-        args['list_id']       as string,
-        args['actual_spend']  as number | undefined
+        args['list_id']      as string,
+        args['actual_spend'] as number | undefined
       );
 
     case 'reconcile_list': {
@@ -417,26 +522,21 @@ async function dispatch(
         const listItem = allListItems.find(
           (li) => !usedListItemIds.has(li.id) && namesMatch(li.name, inItem.name)
         );
-
         if (listItem) {
           usedListItemIds.add(listItem.id);
           const delivered = inItem.status === 'Delivered' || inItem.status === 'Partial Refund';
           const note = inItem.status === 'Refund'
-            ? `Refunded per Instacart order — not delivered`
+            ? 'Refunded per Instacart order — not delivered'
             : inItem.status === 'Partial Refund'
-            ? `Partial refund per Instacart order`
-            : `Delivered per Instacart order`;
-
+            ? 'Partial refund per Instacart order'
+            : 'Delivered per Instacart order';
           matched.push({
             list_item: listItem.name, instacart_item: inItem.name,
             status: inItem.status, price_paid: inItem.price_paid,
             action: delivered ? 'checked' : 'unchecked',
           });
-
           const needsUpdate = listItem.checked !== delivered || !listItem.notes?.includes('Instacart');
-          if (needsUpdate) {
-            await gql.updateListItem(listId, listItem.id, delivered, note);
-          }
+          if (needsUpdate) await gql.updateListItem(listId, listItem.id, delivered, note);
         } else {
           unmatchedInstacart.push(inItem);
         }
@@ -458,8 +558,7 @@ async function dispatch(
         matched,
         unmatched_on_list: unmatchedList,
         untracked_purchases: unmatchedInstacart.map((i) => ({
-          name: i.name, status: i.status,
-          quantity: i.quantity, price_paid: i.price_paid,
+          name: i.name, status: i.status, quantity: i.quantity, price_paid: i.price_paid,
         })),
       };
     }
@@ -471,12 +570,12 @@ async function dispatch(
         (args['limit'] as number | undefined) ?? 10
       );
       return products.map(p => ({
-        productId: p.productId,
-        name: p.description,
-        brand: p.brand,
+        productId:  p.productId,
+        name:       p.description,
+        brand:      p.brand,
         categories: p.categories,
-        size: p.items?.[0]?.size,
-        price: p.items?.[0]?.price?.regular,
+        size:       p.items?.[0]?.size,
+        price:      p.items?.[0]?.price?.regular,
         promoPrice: p.items?.[0]?.price?.promo,
       }));
     }
