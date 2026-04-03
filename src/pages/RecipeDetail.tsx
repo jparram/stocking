@@ -247,7 +247,7 @@ function DeleteDialog({ recipeName, onConfirm, onClose }: DeleteDialogProps) {
 export default function RecipeDetail({ state, updateList }: RecipeDetailProps) {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
-  const { getRecipe, getIngredients, updateRecipe, deleteRecipe, toggleFavorite } = useRecipes();
+  const { getRecipe, getIngredients, updateRecipe, deleteRecipe } = useRecipes();
 
   const [recipe, setRecipe] = useState<Recipe | null>(null);
   const [ingredients, setIngredients] = useState<RecipeIngredient[]>([]);
@@ -277,8 +277,27 @@ export default function RecipeDetail({ state, updateList }: RecipeDetailProps) {
   async function handleToggleFavorite() {
     if (!recipe) return;
     const next = !recipe.isFavorite;
+    // Optimistic update
     setRecipe(r => r ? { ...r, isFavorite: next } : r);
-    await toggleFavorite(recipe.id);
+    try {
+      const updated = await updateRecipe(recipe.id, {
+        name: recipe.name,
+        description: recipe.description,
+        servings: recipe.servings,
+        prepMinutes: recipe.prepMinutes,
+        cookMinutes: recipe.cookMinutes,
+        tags: recipe.tags,
+        sourceUrl: recipe.sourceUrl,
+        notes: recipe.notes,
+        isFavorite: next,
+        lastMadeDate: recipe.lastMadeDate,
+      });
+      setRecipe(updated);
+    } catch (err) {
+      console.error('Failed to update favorite:', err);
+      // Revert on failure
+      setRecipe(r => r ? { ...r, isFavorite: !next } : r);
+    }
   }
 
   async function handleMarkMadeToday() {
