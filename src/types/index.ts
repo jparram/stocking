@@ -59,6 +59,22 @@ export interface HouseholdSettings {
   customItems: Item[];
 }
 
+export interface Recipe {
+  id: string;
+  name: string;
+  description?: string;
+  servings?: number;
+  prepMinutes?: number;
+  cookMinutes?: number;
+  tags?: string[];
+  sourceUrl?: string;
+  notes?: string;
+  isFavorite?: boolean;
+  lastMadeDate?: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
 export interface AppState {
   lists: ShoppingList[];
   weeklyLogs: WeeklyLog[];
