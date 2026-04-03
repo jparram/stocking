@@ -32,6 +32,7 @@ function mapIngredient(i: Schema['RecipeIngredient']['type']): RecipeIngredient 
     unit: i.unit ?? undefined,
     catalogItemId: i.catalogItemId ?? undefined,
     notes: i.notes ?? undefined,
+    sortOrder: i.sortOrder ?? undefined,
     createdAt: i.createdAt,
     updatedAt: i.updatedAt,
   };
@@ -55,6 +56,7 @@ export interface IngredientInput {
   unit?: string;
   catalogItemId?: string;
   notes?: string;
+  sortOrder?: number;
 }
 
 export function useRecipes() {
@@ -106,7 +108,7 @@ export function useRecipes() {
     }
   }
 
-  async function getRecipe(id: string): Promise<Recipe | null> {
+  const getRecipe = useCallback(async (id: string): Promise<Recipe | null> => {
     try {
       const client = getClient();
       const { data } = await client.models.Recipe.get({ id });
@@ -115,20 +117,22 @@ export function useRecipes() {
       console.error('Failed to get recipe:', err);
       return null;
     }
-  }
+  }, []);
 
-  async function getIngredients(recipeId: string): Promise<RecipeIngredient[]> {
+  const getIngredients = useCallback(async (recipeId: string): Promise<RecipeIngredient[]> => {
     try {
       const client = getClient();
       const { data } = await client.models.RecipeIngredient.list({
         filter: { recipeId: { eq: recipeId } },
       });
-      return data.map(mapIngredient);
+      return data
+        .map(mapIngredient)
+        .sort((a, b) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0));
     } catch (err) {
       console.error('Failed to load ingredients:', err);
       return [];
     }
-  }
+  }, []);
 
   async function createRecipe(input: RecipeInput): Promise<Recipe> {
     const client = getClient();
@@ -163,7 +167,7 @@ export function useRecipes() {
       tags: input.tags,
       sourceUrl: input.sourceUrl,
       notes: input.notes,
-      isFavorite: input.isFavorite ?? false,
+      ...(input.isFavorite !== undefined ? { isFavorite: input.isFavorite } : {}),
     });
     if (errors?.length || !data) {
       throw new Error(errors?.map(e => e.message).join(', ') ?? 'Failed to update recipe');
@@ -182,6 +186,7 @@ export function useRecipes() {
       unit: input.unit,
       catalogItemId: input.catalogItemId,
       notes: input.notes,
+      sortOrder: input.sortOrder,
     });
     if (errors?.length || !data) {
       throw new Error(errors?.map(e => e.message).join(', ') ?? 'Failed to create ingredient');
@@ -198,6 +203,7 @@ export function useRecipes() {
       unit: input.unit,
       catalogItemId: input.catalogItemId,
       notes: input.notes,
+      sortOrder: input.sortOrder,
     });
     if (errors?.length || !data) {
       throw new Error(errors?.map(e => e.message).join(', ') ?? 'Failed to update ingredient');

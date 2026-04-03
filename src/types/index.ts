@@ -83,6 +83,7 @@ export interface RecipeIngredient {
   unit?: string;
   catalogItemId?: string;
   notes?: string;
+  sortOrder?: number;
   createdAt: string;
   updatedAt: string;
 }

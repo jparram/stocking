@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, type ChangeEvent, type FormEvent } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { useRecipes } from '../hooks/useRecipes';
 import type { RecipeIngredient } from '../types';
@@ -6,6 +6,8 @@ import { MASTER_CATALOG } from '../data/masterCatalog';
 
 // ─── Local draft type for ingredient rows ────────────────────────────────────
 interface IngredientDraft {
+  /** Stable key for React reconciliation — persisted id or generated uuid */
+  draftKey: string;
   /** Undefined = new, not yet persisted */
   id?: string;
   name: string;
@@ -16,11 +18,12 @@ interface IngredientDraft {
 }
 
 function emptyIngredient(): IngredientDraft {
-  return { name: '', amount: '', unit: '', catalogItemId: '', notes: '' };
+  return { draftKey: crypto.randomUUID(), name: '', amount: '', unit: '', catalogItemId: '', notes: '' };
 }
 
 function ingredientFromPersisted(i: RecipeIngredient): IngredientDraft {
   return {
+    draftKey: i.id,
     id: i.id,
     name: i.name,
     amount: i.amount != null ? String(i.amount) : '',
@@ -57,17 +60,12 @@ function CatalogTypeahead({ value, selectedId, onChange }: CatalogTypeaheadProps
     onChange(name, id);
   };
 
-  const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleInputChange = (e: ChangeEvent<HTMLInputElement>) => {
     const v = e.target.value;
     setQuery(v);
     setOpen(true);
-    // If user clears the field, also clear the catalog link
-    if (v === '') {
-      onChange('', '');
-    } else {
-      // Keep name in sync but don't override catalogItemId yet
-      onChange(v, selectedId);
-    }
+    // Manual edits invalidate any previous catalog selection
+    onChange(v, '');
   };
 
   const handleBlur = () => {
@@ -134,6 +132,7 @@ function IngredientRow({ ingredient, index, total, onChange, onRemove, onMove }:
             disabled={index === 0}
             className="p-1 text-brand-muted hover:text-brand-text disabled:opacity-30"
             title="Move up"
+            aria-label="Move ingredient up"
           >
             ↑
           </button>
@@ -143,6 +142,7 @@ function IngredientRow({ ingredient, index, total, onChange, onRemove, onMove }:
             disabled={index === total - 1}
             className="p-1 text-brand-muted hover:text-brand-text disabled:opacity-30"
             title="Move down"
+            aria-label="Move ingredient down"
           >
             ↓
           </button>
@@ -151,6 +151,7 @@ function IngredientRow({ ingredient, index, total, onChange, onRemove, onMove }:
             onClick={() => onRemove(index)}
             className="p-1 text-red-400 hover:text-red-600"
             title="Remove ingredient"
+            aria-label="Remove ingredient"
           >
             🗑
           </button>
@@ -365,8 +366,7 @@ export default function RecipeForm() {
     })();
 
     return () => { cancelled = true; };
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [id, isEdit]);
+  }, [id, isEdit, getRecipe, getIngredients, navigate]);
 
   // ── Ingredient helpers ──────────────────────────────────────────────────────
   const handleIngredientChange = (index: number, field: keyof IngredientDraft, value: string) => {
@@ -403,7 +403,7 @@ export default function RecipeForm() {
   }
 
   // ── Submit ──────────────────────────────────────────────────────────────────
-  const handleSubmit = async (e: React.FormEvent) => {
+  const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
     if (!validate()) return;
 
@@ -442,13 +442,14 @@ export default function RecipeForm() {
 
         // Create or update current ingredient rows
         await Promise.all(
-          ingredients.map(ing => {
+          ingredients.map((ing, sortOrder) => {
             const ingInput = {
               name: ing.name.trim(),
               amount: ing.amount ? parseFloat(ing.amount) : undefined,
               unit: ing.unit.trim() || undefined,
               catalogItemId: ing.catalogItemId || undefined,
               notes: ing.notes.trim() || undefined,
+              sortOrder,
             };
             if (ing.id) {
               return updateIngredient(ing.id, ingInput);
@@ -464,13 +465,14 @@ export default function RecipeForm() {
         await Promise.all(
           ingredients
             .filter(ing => ing.name.trim())
-            .map(ing =>
+            .map((ing, sortOrder) =>
               createIngredient(recipeId, {
                 name: ing.name.trim(),
                 amount: ing.amount ? parseFloat(ing.amount) : undefined,
                 unit: ing.unit.trim() || undefined,
                 catalogItemId: ing.catalogItemId || undefined,
                 notes: ing.notes.trim() || undefined,
+                sortOrder,
               })
             )
         );
@@ -632,7 +634,7 @@ export default function RecipeForm() {
         <h2 className="font-semibold text-brand-text">Ingredients</h2>
 
         {ingredients.map((ing, idx) => (
-          <div key={idx}>
+          <div key={ing.draftKey}>
             <IngredientRow
               ingredient={ing}
               index={idx}
