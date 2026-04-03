@@ -9,6 +9,7 @@ import History from './pages/History';
 import Settings from './pages/Settings';
 import RecipeList from './pages/RecipeList';
 import RecipeForm from './pages/RecipeForm';
+import RecipeDetail from './pages/RecipeDetail';
 import { useAppState } from './hooks/useAppState';
 
 export default function App() {
@@ -42,13 +43,7 @@ export default function App() {
           <Route path="/recipes/:id/edit" element={<RecipeForm />} />
           <Route
             path="/recipes/:id"
-            element={
-              <div className="text-center py-16">
-                <div className="text-6xl mb-4">📖</div>
-                <h2 className="text-2xl font-bold mb-2 text-brand-text">Recipe Detail</h2>
-                <p className="text-brand-muted">Coming soon!</p>
-              </div>
-            }
+            element={<RecipeDetail state={state} updateList={updateList} />}
           />
           <Route
             path="*"

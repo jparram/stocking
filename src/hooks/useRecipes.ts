@@ -48,6 +48,7 @@ export interface RecipeInput {
   sourceUrl?: string;
   notes?: string;
   isFavorite?: boolean;
+  lastMadeDate?: string;
 }
 
 export interface IngredientInput {
@@ -168,6 +169,7 @@ export function useRecipes() {
       sourceUrl: input.sourceUrl,
       notes: input.notes,
       ...(input.isFavorite !== undefined ? { isFavorite: input.isFavorite } : {}),
+      ...(input.lastMadeDate !== undefined ? { lastMadeDate: input.lastMadeDate } : {}),
     });
     if (errors?.length || !data) {
       throw new Error(errors?.map(e => e.message).join(', ') ?? 'Failed to update recipe');
@@ -219,6 +221,21 @@ export function useRecipes() {
     }
   }
 
+  async function deleteRecipe(id: string): Promise<void> {
+    const client = getClient();
+    // Delete all ingredients first
+    const { data: ings } = await client.models.RecipeIngredient.list({
+      filter: { recipeId: { eq: id } },
+    });
+    await Promise.all(ings.map(i => client.models.RecipeIngredient.delete({ id: i.id })));
+    // Then delete the recipe
+    const { errors } = await client.models.Recipe.delete({ id });
+    if (errors?.length) {
+      throw new Error(errors.map(e => e.message).join(', '));
+    }
+    setRecipes(prev => prev.filter(r => r.id !== id));
+  }
+
   return {
     recipes,
     loading,
@@ -227,6 +244,7 @@ export function useRecipes() {
     getIngredients,
     createRecipe,
     updateRecipe,
+    deleteRecipe,
     createIngredient,
     updateIngredient,
     deleteIngredient,
