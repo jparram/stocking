@@ -127,6 +127,149 @@ export const TOOL_DEFINITIONS = [
       },
     },
   },
+  {
+    name: 'list_recipes',
+    description: 'Returns all recipes with summary info. Optionally filter by tag or favorites.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        limit:          { type: 'number',  description: 'Max results (default 20)' },
+        tag:            { type: 'string',  description: 'Filter by tag' },
+        favorites_only: { type: 'boolean', description: 'Return only favorited recipes' },
+      },
+    },
+  },
+  {
+    name: 'get_recipe',
+    description: 'Returns full recipe detail including all ingredients.',
+    inputSchema: {
+      type: 'object',
+      required: ['recipe_id'],
+      properties: {
+        recipe_id: { type: 'string', description: 'Recipe ID' },
+      },
+    },
+  },
+  {
+    name: 'create_recipe',
+    description: 'Creates a new recipe with optional ingredients.',
+    inputSchema: {
+      type: 'object',
+      required: ['name'],
+      properties: {
+        name:         { type: 'string' },
+        description:  { type: 'string' },
+        servings:     { type: 'number' },
+        prepMinutes:  { type: 'number' },
+        cookMinutes:  { type: 'number' },
+        tags:         { type: 'array',  items: { type: 'string' } },
+        sourceUrl:    { type: 'string' },
+        notes:        { type: 'string' },
+        isFavorite:   { type: 'boolean' },
+        lastMadeDate: { type: 'string', description: 'ISO date (YYYY-MM-DD)' },
+        ingredients: {
+          type: 'array',
+          items: {
+            type: 'object',
+            required: ['name'],
+            properties: {
+              name:          { type: 'string' },
+              amount:        { type: 'number' },
+              unit:          { type: 'string' },
+              catalogItemId: { type: 'string', description: 'Catalog item ID (e.g. ht-006)' },
+              notes:         { type: 'string' },
+            },
+          },
+        },
+      },
+    },
+  },
+  {
+    name: 'update_recipe',
+    description: 'Updates recipe metadata. Does not modify ingredients — use add_recipe_ingredient / delete_recipe_ingredient for that.',
+    inputSchema: {
+      type: 'object',
+      required: ['recipe_id'],
+      properties: {
+        recipe_id:    { type: 'string' },
+        name:         { type: 'string' },
+        description:  { type: 'string' },
+        servings:     { type: 'number' },
+        prepMinutes:  { type: 'number' },
+        cookMinutes:  { type: 'number' },
+        tags:         { type: 'array', items: { type: 'string' } },
+        sourceUrl:    { type: 'string' },
+        notes:        { type: 'string' },
+        isFavorite:   { type: 'boolean' },
+        lastMadeDate: { type: 'string', description: 'ISO date (YYYY-MM-DD)' },
+      },
+    },
+  },
+  {
+    name: 'delete_recipe',
+    description: 'Deletes a recipe and all its ingredients.',
+    inputSchema: {
+      type: 'object',
+      required: ['recipe_id'],
+      properties: {
+        recipe_id: { type: 'string' },
+      },
+    },
+  },
+  {
+    name: 'add_recipe_ingredient',
+    description: 'Appends one or more ingredients to an existing recipe.',
+    inputSchema: {
+      type: 'object',
+      required: ['recipe_id', 'ingredients'],
+      properties: {
+        recipe_id: { type: 'string' },
+        ingredients: {
+          type: 'array',
+          items: {
+            type: 'object',
+            required: ['name'],
+            properties: {
+              name:          { type: 'string' },
+              amount:        { type: 'number' },
+              unit:          { type: 'string' },
+              catalogItemId: { type: 'string' },
+              notes:         { type: 'string' },
+            },
+          },
+        },
+      },
+    },
+  },
+  {
+    name: 'delete_recipe_ingredient',
+    description: 'Removes a single ingredient from a recipe.',
+    inputSchema: {
+      type: 'object',
+      required: ['ingredient_id'],
+      properties: {
+        recipe_id:     { type: 'string', description: 'Recipe ID (for context/confirmation)' },
+        ingredient_id: { type: 'string', description: 'RecipeIngredient ID to delete' },
+      },
+    },
+  },
+  {
+    name: 'add_recipe_to_shopping_list',
+    description:
+      'Pushes catalog-linked ingredients from a recipe onto an existing shopping list. '
+      + 'Ingredients with a catalogItemId are resolved against the master catalog. '
+      + 'Ingredients without a catalogItemId are added as custom items.',
+    inputSchema: {
+      type: 'object',
+      required: ['recipe_id', 'list_id', 'store'],
+      properties: {
+        recipe_id:       { type: 'string' },
+        list_id:         { type: 'string', description: 'Target shopping list ID' },
+        store:           { type: 'string', enum: ['sams', 'ht', 'both'], description: 'Store (used for custom item defaults)' },
+        ingredient_ids:  { type: 'array', items: { type: 'string' }, description: 'If omitted, all ingredients are added' },
+      },
+    },
+  },
 ];
 
 export async function handleToolCall(
@@ -241,6 +384,156 @@ async function dispatch(
         price: p.items?.[0]?.price?.regular,
         promoPrice: p.items?.[0]?.price?.promo,
       }));
+    }
+
+    case 'list_recipes':
+      return gql.listRecipes(
+        (args['limit'] as number) ?? 20,
+        args['tag']            as string | undefined,
+        args['favorites_only'] as boolean | undefined
+      );
+
+    case 'get_recipe':
+      return gql.getRecipe(args['recipe_id'] as string);
+
+    case 'create_recipe': {
+      const recipeInput = {
+        name:         args['name']         as string,
+        description:  args['description']  as string | undefined,
+        servings:     args['servings']     as number | undefined,
+        prepMinutes:  args['prepMinutes']  as number | undefined,
+        cookMinutes:  args['cookMinutes']  as number | undefined,
+        tags:         args['tags']         as string[] | undefined,
+        sourceUrl:    args['sourceUrl']    as string | undefined,
+        notes:        args['notes']        as string | undefined,
+        isFavorite:   args['isFavorite']   as boolean | undefined,
+        lastMadeDate: args['lastMadeDate'] as string | undefined,
+      };
+      const ingredients = (args['ingredients'] as Array<{
+        name: string; amount?: number; unit?: string; catalogItemId?: string; notes?: string;
+      }> | undefined) ?? [];
+
+      const recipe = await gql.createRecipe(recipeInput, ingredients);
+      return {
+        success: true,
+        recipe_id: recipe.id,
+        name: recipeInput.name,
+        ingredient_count: ingredients.length,
+      };
+    }
+
+    case 'update_recipe': {
+      const recipeId = args['recipe_id'] as string;
+      const updates = {
+        name:         args['name']         as string | undefined,
+        description:  args['description']  as string | undefined,
+        servings:     args['servings']     as number | undefined,
+        prepMinutes:  args['prepMinutes']  as number | undefined,
+        cookMinutes:  args['cookMinutes']  as number | undefined,
+        tags:         args['tags']         as string[] | undefined,
+        sourceUrl:    args['sourceUrl']    as string | undefined,
+        notes:        args['notes']        as string | undefined,
+        isFavorite:   args['isFavorite']   as boolean | undefined,
+        lastMadeDate: args['lastMadeDate'] as string | undefined,
+      };
+      return gql.updateRecipe(recipeId, updates);
+    }
+
+    case 'delete_recipe': {
+      const recipeId = args['recipe_id'] as string;
+      const result = await gql.deleteRecipe(recipeId);
+      return {
+        success: true,
+        recipe_id: recipeId,
+        deleted_ingredient_count: result.deletedIngredientCount,
+      };
+    }
+
+    case 'add_recipe_ingredient': {
+      const recipeId = args['recipe_id'] as string;
+      const ingredients = args['ingredients'] as Array<{
+        name: string; amount?: number; unit?: string; catalogItemId?: string; notes?: string;
+      }>;
+      const added: { id: string; name: string }[] = [];
+      for (let index = 0; index < ingredients.length; index++) {
+        const result = await gql.createRecipeIngredient(recipeId, { ...ingredients[index], sortOrder: index });
+        added.push(result);
+      }
+      return { success: true, recipe_id: recipeId, added };
+    }
+
+    case 'delete_recipe_ingredient': {
+      const ingredientId = args['ingredient_id'] as string;
+      await gql.deleteRecipeIngredient(ingredientId);
+      return { success: true, deleted_ingredient_id: ingredientId };
+    }
+
+    case 'add_recipe_to_shopping_list': {
+      const recipeId      = args['recipe_id']      as string;
+      const listId        = args['list_id']        as string;
+      const store         = args['store']          as string;
+      const ingredientIds = args['ingredient_ids'] as string[] | undefined;
+
+      const recipeData = await gql.getRecipe(recipeId) as {
+        name: string;
+        ingredients: Array<{
+          id: string; name: string; amount?: number; unit?: string;
+          catalogItemId?: string; notes?: string;
+        }>;
+      };
+
+      let ingredients = recipeData.ingredients;
+      if (ingredientIds && ingredientIds.length > 0) {
+        ingredients = ingredients.filter((ing) => ingredientIds.includes(ing.id));
+      }
+
+      const added:          { name: string; catalog_id: string }[] = [];
+      const addedAsCustom:  { name: string }[]                     = [];
+      const skipped:        { name: string; reason: string }[]     = [];
+
+      for (const ing of ingredients) {
+        if (ing.catalogItemId) {
+          const cat = catalog.find((c) => c.id === ing.catalogItemId);
+          if (cat) {
+            await gql.addShoppingListItem(listId, {
+              itemId:     cat.id,
+              name:       cat.name,
+              category:   cat.category,
+              store:      cat.store,
+              quantity:   ing.amount ?? 1,
+              unit:       ing.unit ?? cat.unit,
+              approxCost: cat.approxCost,
+              checked:    false,
+              notes:      ing.notes ?? '',
+            });
+            added.push({ name: cat.name, catalog_id: cat.id });
+          } else {
+            skipped.push({ name: ing.name, reason: `catalogItemId ${ing.catalogItemId} not found in catalog` });
+          }
+        } else {
+          await gql.addShoppingListItem(listId, {
+            itemId:     `custom-${ing.name.toLowerCase().replace(/\s+/g, '-')}`,
+            name:       ing.name,
+            category:   'Custom',
+            store,
+            quantity:   ing.amount ?? 1,
+            unit:       ing.unit ?? 'each',
+            approxCost: 0,
+            checked:    false,
+            notes:      ing.notes ?? '',
+          });
+          addedAsCustom.push({ name: ing.name });
+        }
+      }
+
+      return {
+        success: true,
+        list_id: listId,
+        recipe_name: recipeData.name,
+        added,
+        added_as_custom: addedAsCustom,
+        skipped,
+      };
     }
 
     default:
