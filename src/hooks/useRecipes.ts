@@ -48,6 +48,7 @@ export interface RecipeInput {
   sourceUrl?: string;
   notes?: string;
   isFavorite?: boolean;
+  lastMadeDate?: string;
 }
 
 export interface IngredientInput {
@@ -168,6 +169,7 @@ export function useRecipes() {
       sourceUrl: input.sourceUrl,
       notes: input.notes,
       ...(input.isFavorite !== undefined ? { isFavorite: input.isFavorite } : {}),
+      ...(input.lastMadeDate !== undefined ? { lastMadeDate: input.lastMadeDate } : {}),
     });
     if (errors?.length || !data) {
       throw new Error(errors?.map(e => e.message).join(', ') ?? 'Failed to update recipe');
@@ -219,6 +221,38 @@ export function useRecipes() {
     }
   }
 
+  async function deleteRecipe(id: string): Promise<void> {
+    const client = getClient();
+    try {
+      // Delete all ingredients first
+      const { data: ings = [], errors: listErrors } = await client.models.RecipeIngredient.list({
+        filter: { recipeId: { eq: id } },
+      });
+      if (listErrors?.length) {
+        throw new Error(listErrors.map(e => e.message).join(', '));
+      }
+
+      await Promise.all(
+        ings.map(async i => {
+          const { errors } = await client.models.RecipeIngredient.delete({ id: i.id });
+          if (errors?.length) {
+            throw new Error(errors.map(e => e.message).join(', '));
+          }
+        }),
+      );
+
+      // Then delete the recipe
+      const { errors } = await client.models.Recipe.delete({ id });
+      if (errors?.length) {
+        throw new Error(errors.map(e => e.message).join(', '));
+      }
+
+      setRecipes(prev => prev.filter(r => r.id !== id));
+    } catch (error) {
+      throw error instanceof Error ? error : new Error('Failed to delete recipe');
+    }
+  }
+
   return {
     recipes,
     loading,
@@ -227,6 +261,7 @@ export function useRecipes() {
     getIngredients,
     createRecipe,
     updateRecipe,
+    deleteRecipe,
     createIngredient,
     updateIngredient,
     deleteIngredient,
