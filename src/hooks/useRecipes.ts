@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { generateClient } from 'aws-amplify/data';
 import type { Schema } from '../../amplify/data/resource';
 import type { Recipe } from '../types';
@@ -35,11 +35,7 @@ export function useRecipes() {
   const [recipes, setRecipes] = useState<Recipe[]>([]);
   const [loading, setLoading] = useState(true);
 
-  useEffect(() => {
-    loadRecipes();
-  }, []);
-
-  async function loadRecipes() {
+  const loadRecipes = useCallback(async () => {
     setLoading(true);
     try {
       const client = getClient();
@@ -54,7 +50,12 @@ export function useRecipes() {
     } finally {
       setLoading(false);
     }
-  }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  useEffect(() => {
+    loadRecipes();
+  }, [loadRecipes]);
 
   async function toggleFavorite(id: string) {
     const recipe = recipes.find(r => r.id === id);

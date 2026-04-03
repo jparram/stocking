@@ -191,7 +191,7 @@ export default function RecipeList() {
           <div className="text-4xl mb-3">🔍</div>
           <p>No recipes match your filters.</p>
           <button
-            onClick={() => { setSearch(''); setActiveTag(null); setFavoritesOnly(false); }}
+          onClick={() => { setSearch(''); setActiveTag(null); setFavoritesOnly(false); }}
             className="text-sams hover:underline text-sm mt-2"
           >
             Clear filters
