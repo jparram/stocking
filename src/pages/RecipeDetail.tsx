@@ -45,6 +45,13 @@ function AddToListModal({ ingredients, lists, onConfirm, onClose }: AddToListMod
   );
   const activeLists = lists.filter(l => l.status !== 'complete');
   const [targetListId, setTargetListId] = useState(activeLists[0]?.id ?? '');
+
+  useEffect(() => {
+    const hasValidSelection = activeLists.some(list => list.id === targetListId);
+    if (!hasValidSelection) {
+      setTargetListId(activeLists[0]?.id ?? '');
+    }
+  }, [activeLists, targetListId]);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
 
