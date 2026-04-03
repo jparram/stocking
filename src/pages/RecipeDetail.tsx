@@ -13,7 +13,7 @@ interface RecipeDetailProps {
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 function formatTime(minutes?: number): string | null {
-  if (!minutes) return null;
+  if (minutes == null) return null;
   if (minutes < 60) return `${minutes} min`;
   const h = Math.floor(minutes / 60);
   const m = minutes % 60;
