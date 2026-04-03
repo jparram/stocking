@@ -71,7 +71,7 @@ export class GraphQLClient {
     return json.data;
   }
 
-  // ── CREATE LIST + ITEMS ───────────────────────────────────────────────────
+  // ── CREATE LIST + ITEMS ─────────────────────────────────────────────────────
   async createShoppingList(input: ListInput): Promise<{ id: string }> {
     // 1. Create the list header
     const listData = await this.query<{
@@ -95,31 +95,45 @@ export class GraphQLClient {
 
     // 2. Create each line item linked to the list
     for (const item of input.items) {
-      await this.query(
-        `mutation CreateShoppingListItem($input: CreateShoppingListItemInput!) {
-          createShoppingListItem(input: $input) { id }
-        }`,
-        {
-          input: {
-            listId,
-            itemId:     item.itemId,
-            name:       item.name,
-            category:   item.category,
-            store:      item.store,
-            quantity:   item.quantity,
-            unit:       item.unit,
-            approxCost: item.approxCost,
-            checked:    item.checked,
-            notes:      item.notes,
-          },
-        }
-      );
+      await this.createShoppingListItem(listId, item);
     }
 
     return { id: listId };
   }
 
-  // ── LIST SHOPPING LISTS ───────────────────────────────────────────────────
+  // ── ADD SINGLE ITEM TO EXISTING LIST ─────────────────────────────────
+  async addItemToList(listId: string, item: ItemInput): Promise<{ id: string }> {
+    return this.createShoppingListItem(listId, item);
+  }
+
+  // ── SHARED ITEM CREATION MUTATION ──────────────────────────────────────
+  private async createShoppingListItem(
+    listId: string,
+    item: ItemInput
+  ): Promise<{ id: string }> {
+    const data = await this.query<{ createShoppingListItem: { id: string } }>(
+      `mutation CreateShoppingListItem($input: CreateShoppingListItemInput!) {
+        createShoppingListItem(input: $input) { id }
+      }`,
+      {
+        input: {
+          listId,
+          itemId:     item.itemId,
+          name:       item.name,
+          category:   item.category,
+          store:      item.store,
+          quantity:   item.quantity,
+          unit:       item.unit,
+          approxCost: item.approxCost,
+          checked:    item.checked,
+          notes:      item.notes,
+        },
+      }
+    );
+    return { id: data.createShoppingListItem.id };
+  }
+
+  // ── LIST SHOPPING LISTS ─────────────────────────────────────────────────────
   async listShoppingLists(
     limit = 5,
     store?: string,
@@ -147,7 +161,7 @@ export class GraphQLClient {
     return lists.slice(0, limit);
   }
 
-  // ── GET LIST ITEMS ────────────────────────────────────────────────────────
+  // ── GET LIST ITEMS ───────────────────────────────────────────────────────────
   async getListItems(listId: string): Promise<unknown> {
     const data = await this.query<{
       getShoppingList: {
@@ -193,7 +207,7 @@ export class GraphQLClient {
     };
   }
 
-  // ── UPDATE LIST ITEM ──────────────────────────────────────────────────────
+  // ── UPDATE LIST ITEM ───────────────────────────────────────────────────────────
   async updateListItem(
     _listId: string,
     itemId: string,
@@ -212,7 +226,7 @@ export class GraphQLClient {
     return data.updateShoppingListItem;
   }
 
-  // ── COMPLETE LIST ─────────────────────────────────────────────────────────
+  // ── COMPLETE LIST ──────────────────────────────────────────────────────────────
   async completeList(
     listId: string,
     actualSpend?: number
@@ -229,7 +243,7 @@ export class GraphQLClient {
     return data.updateShoppingList;
   }
 
-  // ── RECONCILE LIST ────────────────────────────────────────────────────────
+  // ── RECONCILE LIST ─────────────────────────────────────────────────────────────
   /**
    * Applies a batch of item-level check/note updates and corrects the list's
    * totalSpend in a single logical operation.  All item updates run in parallel

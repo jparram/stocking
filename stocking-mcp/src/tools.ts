@@ -9,27 +9,14 @@ import type { KrogerClient } from './kroger.js';
 
 // ── Reconciliation types ──────────────────────────────────────────────────────
 
-/**
- * A single line from an Instacart order export (Purchased Items CSV or
- * equivalent structured data).  All fields except `name` and `status` are
- * optional so callers can pass as much or as little detail as available.
- */
 export interface InstacartLineItem {
-  /** Human-readable product description from the order */
   name: string;
-  /** Delivery outcome: "Delivered", "Refund", or "Partial Refund" */
   status: 'Delivered' | 'Refund' | 'Partial Refund';
-  /** Quantity ordered */
   quantity?: number;
-  /** Amount actually charged (after promotions, before tax) */
   price_paid?: number;
-  /** Store slug — used to cross-check against the list's store */
   store?: string;
 }
 
-/**
- * A list item from get_list_items, used internally for matching.
- */
 interface ListItem {
   id: string;
   name: string;
@@ -37,10 +24,6 @@ interface ListItem {
   notes?: string;
 }
 
-/**
- * Fuzzy name match between a list item name and an Instacart product name.
- * Returns true if they share enough significant words (≥1 word of ≥4 chars).
- */
 function namesMatch(listName: string, instacartName: string): boolean {
   const normalize = (s: string) =>
     s.toLowerCase().replace(/[^a-z0-9 ]/g, ' ').split(/\s+/).filter(Boolean);
@@ -48,13 +31,55 @@ function namesMatch(listName: string, instacartName: string): boolean {
   const listWords = normalize(listName);
   const instWords = normalize(instacartName);
 
-  // Exact substring match (covers brand + product combos)
   if (instacartName.toLowerCase().includes(listName.toLowerCase())) return true;
   if (listName.toLowerCase().includes(instacartName.toLowerCase())) return true;
 
-  // Shared significant words (≥4 chars)
   const significant = listWords.filter((w) => w.length >= 4);
   return significant.some((w) => instWords.includes(w));
+}
+
+// ── Shared item resolution ────────────────────────────────────────────────────
+
+function resolveItem(
+  ri: { item_id: string; name?: string; quantity: number; notes?: string },
+  catalog: CatalogItem[],
+  defaultStore: string
+) {
+  const isCustomId = ri.item_id === 'custom';
+  const cat = isCustomId ? undefined : catalog.find((c) => c.id === ri.item_id);
+
+  if (!cat) {
+    const displayName = ri.name?.trim();
+    if (!displayName) {
+      throw new Error(
+        `Unknown item_id "${ri.item_id}" and no name provided. `
+        + `Either use a valid catalog ID or pass item_id="custom" with a name.`
+      );
+    }
+    return {
+      itemId:     `custom-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+      name:       displayName,
+      category:   'Custom',
+      store:      defaultStore === 'both' ? 'both' : defaultStore,
+      quantity:   ri.quantity,
+      unit:       '',
+      approxCost: 0,
+      checked:    false,
+      notes:      ri.notes ?? '',
+    };
+  }
+
+  return {
+    itemId:     ri.item_id,
+    name:       ri.name?.trim() || cat.name,
+    category:   cat.category,
+    store:      cat.store,
+    quantity:   ri.quantity,
+    unit:       cat.unit,
+    approxCost: cat.approxCost,
+    checked:    false,
+    notes:      ri.notes ?? cat.notes ?? '',
+  };
 }
 
 export const TOOL_DEFINITIONS = [
@@ -111,15 +136,46 @@ export const TOOL_DEFINITIONS = [
             properties: {
               item_id:  {
                 type: 'string',
-                description:
-                  'ID from catalog (e.g. sc-001, ht-013), or "custom" for '
-                  + 'off-catalog items. When using "custom", the name field is required.',
+                description: 'ID from catalog (e.g. sc-001, ht-013), or "custom" for off-catalog items.',
               },
               name:     {
                 type: 'string',
-                description:
-                  'Display name for the item. Required when item_id is "custom". '
-                  + 'Optional override for catalog items.',
+                description: 'Display name. Required when item_id is "custom". Optional override for catalog items.',
+              },
+              quantity: { type: 'number' },
+              notes:    { type: 'string' },
+            },
+          },
+        },
+      },
+    },
+  },
+  {
+    name: 'add_list_item',
+    description:
+      'Appends one or more items to an existing shopping list. '
+      + 'Use this to add forgotten or ad-hoc items to a list that already exists '
+      + 'rather than creating a new list. Accepts the same item format as '
+      + 'create_shopping_list: catalog IDs or item_id="custom" with a name.',
+    inputSchema: {
+      type: 'object',
+      required: ['list_id', 'store', 'items'],
+      properties: {
+        list_id: { type: 'string', description: 'ID of the existing shopping list' },
+        store:   { type: 'string', enum: ['sams', 'ht', 'both'], description: 'Store context for custom item defaults' },
+        items: {
+          type: 'array',
+          items: {
+            type: 'object',
+            required: ['item_id', 'quantity'],
+            properties: {
+              item_id:  {
+                type: 'string',
+                description: 'Catalog ID or "custom" for off-catalog items.',
+              },
+              name:     {
+                type: 'string',
+                description: 'Display name. Required when item_id is "custom".',
               },
               quantity: { type: 'number' },
               notes:    { type: 'string' },
@@ -191,14 +247,8 @@ export const TOOL_DEFINITIONS = [
       type: 'object',
       required: ['list_id', 'actual_spend', 'instacart_items'],
       properties: {
-        list_id: {
-          type: 'string',
-          description: 'The shopping list ID to reconcile',
-        },
-        actual_spend: {
-          type: 'number',
-          description: 'Total amount actually paid (from Instacart order total)',
-        },
+        list_id:      { type: 'string', description: 'The shopping list ID to reconcile' },
+        actual_spend: { type: 'number', description: 'Total amount actually paid (from Instacart order total)' },
         instacart_items: {
           type: 'array',
           description: 'Line items from the Instacart order',
@@ -206,11 +256,11 @@ export const TOOL_DEFINITIONS = [
             type: 'object',
             required: ['name', 'status'],
             properties: {
-              name:       { type: 'string', description: 'Product description from Instacart' },
-              status:     { type: 'string', enum: ['Delivered', 'Refund', 'Partial Refund'], description: 'Delivery outcome' },
-              quantity:   { type: 'number', description: 'Quantity ordered' },
-              price_paid: { type: 'number', description: 'Amount charged after promotions' },
-              store:      { type: 'string', description: 'Store slug (e.g. sams-club, harristeeter)' },
+              name:       { type: 'string' },
+              status:     { type: 'string', enum: ['Delivered', 'Refund', 'Partial Refund'] },
+              quantity:   { type: 'number' },
+              price_paid: { type: 'number' },
+              store:      { type: 'string' },
             },
           },
         },
@@ -268,55 +318,13 @@ async function dispatch(
     }
 
     case 'create_shopping_list': {
-      const store   = args['store'] as string;
-      const weekOf  = (args['week_of'] as string) ?? cadence.getMondayOf();
+      const store    = args['store'] as string;
+      const weekOf   = (args['week_of'] as string) ?? cadence.getMondayOf();
       const rawItems = args['items'] as Array<{
         item_id: string; name?: string; quantity: number; notes?: string;
       }>;
 
-      const resolvedItems = rawItems.map((ri) => {
-        // ── Custom (off-catalog) item ──────────────────────────────────────────
-        // Triggered by item_id === 'custom' OR when item_id is not found in
-        // the catalog but a name is supplied.
-        const isCustomId = ri.item_id === 'custom';
-        const cat = isCustomId ? undefined : catalog.find((c) => c.id === ri.item_id);
-
-        if (!cat) {
-          // Require a name for items that can't be resolved from the catalog
-          const displayName = ri.name?.trim();
-          if (!displayName) {
-            throw new Error(
-              `Unknown item_id "${ri.item_id}" and no name provided. `
-              + `Either use a valid catalog ID or pass item_id="custom" with a name.`
-            );
-          }
-          // Build a synthetic catalog-shaped entry for the custom item
-          return {
-            itemId:     ri.item_id === 'custom' ? `custom-${Date.now()}-${Math.random().toString(36).slice(2, 7)}` : ri.item_id,
-            name:       displayName,
-            category:   'Custom',
-            store:      store === 'both' ? 'both' : store,
-            quantity:   ri.quantity,
-            unit:       '',
-            approxCost: 0,
-            checked:    false,
-            notes:      ri.notes ?? '',
-          };
-        }
-
-        // ── Catalog item (normal path) ─────────────────────────────────────────
-        return {
-          itemId:     ri.item_id,
-          name:       ri.name?.trim() || cat.name,   // allow name override
-          category:   cat.category,
-          store:      cat.store,
-          quantity:   ri.quantity,
-          unit:       cat.unit,
-          approxCost: cat.approxCost,
-          checked:    false,
-          notes:      ri.notes ?? cat.notes ?? '',
-        };
-      });
+      const resolvedItems = rawItems.map((ri) => resolveItem(ri, catalog, store));
 
       const storeName =
         store === 'sams' ? "Sam's Club"
@@ -337,6 +345,30 @@ async function dispatch(
         week_of: weekOf, item_count: resolvedItems.length,
         estimated_total: `$${totalEstimate.toFixed(2)}`,
         message: 'List created and live in the Stocking app.',
+      };
+    }
+
+    case 'add_list_item': {
+      const listId   = args['list_id'] as string;
+      const store    = args['store'] as string;
+      const rawItems = args['items'] as Array<{
+        item_id: string; name?: string; quantity: number; notes?: string;
+      }>;
+
+      const resolvedItems = rawItems.map((ri) => resolveItem(ri, catalog, store));
+      const added: { id: string; name: string }[] = [];
+
+      for (const item of resolvedItems) {
+        const result = await gql.addItemToList(listId, item);
+        added.push({ id: result.id, name: item.name });
+      }
+
+      return {
+        success: true,
+        list_id: listId,
+        items_added: added.length,
+        added,
+        message: `${added.length} item(s) added to list.`,
       };
     }
 
@@ -365,23 +397,18 @@ async function dispatch(
       );
 
     case 'reconcile_list': {
-      const listId       = args['list_id'] as string;
-      const actualSpend  = args['actual_spend'] as number;
+      const listId         = args['list_id'] as string;
+      const actualSpend    = args['actual_spend'] as number;
       const instacartItems = args['instacart_items'] as InstacartLineItem[];
 
-      // 1. Fetch the current list items
       const listData = await gql.getListItems(listId) as {
         items_by_category: Record<string, ListItem[]>;
       };
       const allListItems: ListItem[] = Object.values(listData.items_by_category).flat();
 
-      // 2. Match list items to Instacart items by fuzzy name
       const matched: Array<{
-        list_item: string;
-        instacart_item: string;
-        status: string;
-        price_paid?: number;
-        action: string;
+        list_item: string; instacart_item: string;
+        status: string; price_paid?: number; action: string;
       }> = [];
       const unmatchedInstacart: InstacartLineItem[] = [];
       const usedListItemIds = new Set<string>();
@@ -401,14 +428,11 @@ async function dispatch(
             : `Delivered per Instacart order`;
 
           matched.push({
-            list_item:      listItem.name,
-            instacart_item: inItem.name,
-            status:         inItem.status,
-            price_paid:     inItem.price_paid,
-            action:         delivered ? 'checked' : 'unchecked',
+            list_item: listItem.name, instacart_item: inItem.name,
+            status: inItem.status, price_paid: inItem.price_paid,
+            action: delivered ? 'checked' : 'unchecked',
           });
 
-          // Only update if the current state differs or notes should be added
           const needsUpdate = listItem.checked !== delivered || !listItem.notes?.includes('Instacart');
           if (needsUpdate) {
             await gql.updateListItem(listId, listItem.id, delivered, note);
@@ -418,29 +442,24 @@ async function dispatch(
         }
       }
 
-      // 3. List items with no Instacart match
       const unmatchedList = allListItems
         .filter((li) => !usedListItemIds.has(li.id))
         .map((li) => ({ id: li.id, name: li.name, was_checked: li.checked }));
 
-      // 4. Correct the spend
       await gql.completeList(listId, actualSpend);
 
       return {
-        list_id:      listId,
-        actual_spend: actualSpend,
+        list_id: listId, actual_spend: actualSpend,
         summary: {
-          matched:             matched.length,
-          unmatched_on_list:   unmatchedList.length,
+          matched: matched.length,
+          unmatched_on_list: unmatchedList.length,
           untracked_purchases: unmatchedInstacart.length,
         },
         matched,
-        unmatched_on_list:   unmatchedList,
+        unmatched_on_list: unmatchedList,
         untracked_purchases: unmatchedInstacart.map((i) => ({
-          name:       i.name,
-          status:     i.status,
-          quantity:   i.quantity,
-          price_paid: i.price_paid,
+          name: i.name, status: i.status,
+          quantity: i.quantity, price_paid: i.price_paid,
         })),
       };
     }
