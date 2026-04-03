@@ -307,29 +307,55 @@ export default function RecipeDetail({ state, updateList }: RecipeDetailProps) {
     const targetList = state.lists.find(l => l.id === targetListId);
     if (!targetList) throw new Error('List not found.');
 
-    const newItems: ShoppingListItem[] = selectedIngredientIds.flatMap(ingId => {
+    const mergedItems = [...targetList.items];
+
+    selectedIngredientIds.forEach(ingId => {
       const ing = ingredients.find(i => i.id === ingId);
-      if (!ing?.catalogItemId) return [];
+      if (!ing?.catalogItemId) return;
+
       const catalogItem = MASTER_CATALOG.find(c => c.id === ing.catalogItemId);
-      if (!catalogItem) return [];
+      if (!catalogItem) return;
+
+      const quantityToAdd = ing.amount ?? 1;
+      const existingIndex = mergedItems.findIndex(item => item.itemId === catalogItem.id);
+
+      if (existingIndex >= 0) {
+        const existingItem = mergedItems[existingIndex];
+        const mergedNotes = ing.notes
+          ? existingItem.notes
+            ? existingItem.notes.includes(ing.notes)
+              ? existingItem.notes
+              : `${existingItem.notes}; ${ing.notes}`
+            : ing.notes
+          : existingItem.notes;
+
+        mergedItems[existingIndex] = {
+          ...existingItem,
+          quantity: existingItem.quantity + quantityToAdd,
+          notes: mergedNotes,
+        };
+        return;
+      }
+
       const item: ShoppingListItem = {
         id: generateId(),
         itemId: catalogItem.id,
         name: catalogItem.name,
         category: catalogItem.category,
         store: catalogItem.store,
-        quantity: ing.amount ?? 1,
+        quantity: quantityToAdd,
         unit: ing.unit ?? catalogItem.unit,
         approxCost: catalogItem.approxCost,
         checked: false,
         notes: ing.notes,
       };
-      return [item];
+
+      mergedItems.push(item);
     });
 
     const updatedList: ShoppingList = {
       ...targetList,
-      items: [...targetList.items, ...newItems],
+      items: mergedItems,
     };
 
     await updateList(updatedList);
