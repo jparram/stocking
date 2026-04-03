@@ -455,8 +455,8 @@ async function dispatch(
         name: string; amount?: number; unit?: string; catalogItemId?: string; notes?: string;
       }>;
       const added: { id: string; name: string }[] = [];
-      for (let i = 0; i < ingredients.length; i++) {
-        const result = await gql.createRecipeIngredient(recipeId, { ...ingredients[i], sortOrder: i });
+      for (let index = 0; index < ingredients.length; index++) {
+        const result = await gql.createRecipeIngredient(recipeId, { ...ingredients[index], sortOrder: index });
         added.push(result);
       }
       return { success: true, recipe_id: recipeId, added };

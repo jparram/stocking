@@ -297,8 +297,8 @@ export class GraphQLClient {
 
     const recipeId = recipeData.createRecipe.id;
 
-    for (let i = 0; i < ingredients.length; i++) {
-      await this.createRecipeIngredient(recipeId, { ...ingredients[i], sortOrder: ingredients[i].sortOrder ?? i });
+    for (let index = 0; index < ingredients.length; index++) {
+      await this.createRecipeIngredient(recipeId, { ...ingredients[index], sortOrder: ingredients[index].sortOrder ?? index });
     }
 
     return { id: recipeId };
