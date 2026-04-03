@@ -32,6 +32,12 @@ export interface ItemInput {
   notes: string;
 }
 
+export interface ReconcileItemUpdate {
+  item_id: string;
+  checked: boolean;
+  notes?: string;
+}
+
 export class GraphQLClient {
   constructor(
     private endpoint: string,
@@ -221,5 +227,31 @@ export class GraphQLClient {
       { input }
     );
     return data.updateShoppingList;
+  }
+
+  // ── RECONCILE LIST ────────────────────────────────────────────────────────
+  /**
+   * Applies a batch of item-level check/note updates and corrects the list's
+   * totalSpend in a single logical operation.  All item updates run in parallel
+   * for speed; the spend update runs after.
+   */
+  async reconcileList(
+    listId: string,
+    actualSpend: number,
+    itemUpdates: ReconcileItemUpdate[]
+  ): Promise<{ list_id: string; actual_spend: number; items_updated: number }> {
+    // Parallel item updates
+    await Promise.all(
+      itemUpdates.map((u) => this.updateListItem(listId, u.item_id, u.checked, u.notes))
+    );
+
+    // Correct the spend
+    await this.completeList(listId, actualSpend);
+
+    return {
+      list_id: listId,
+      actual_spend: actualSpend,
+      items_updated: itemUpdates.length,
+    };
   }
 }

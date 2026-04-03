@@ -7,6 +7,56 @@ import type { GraphQLClient } from './graphql.js';
 import type { CatalogItem } from './catalog.js';
 import type { KrogerClient } from './kroger.js';
 
+// ── Reconciliation types ──────────────────────────────────────────────────────
+
+/**
+ * A single line from an Instacart order export (Purchased Items CSV or
+ * equivalent structured data).  All fields except `name` and `status` are
+ * optional so callers can pass as much or as little detail as available.
+ */
+export interface InstacartLineItem {
+  /** Human-readable product description from the order */
+  name: string;
+  /** Delivery outcome: "Delivered", "Refund", or "Partial Refund" */
+  status: 'Delivered' | 'Refund' | 'Partial Refund';
+  /** Quantity ordered */
+  quantity?: number;
+  /** Amount actually charged (after promotions, before tax) */
+  price_paid?: number;
+  /** Store slug — used to cross-check against the list's store */
+  store?: string;
+}
+
+/**
+ * A list item from get_list_items, used internally for matching.
+ */
+interface ListItem {
+  id: string;
+  name: string;
+  checked: boolean;
+  notes?: string;
+}
+
+/**
+ * Fuzzy name match between a list item name and an Instacart product name.
+ * Returns true if they share enough significant words (≥1 word of ≥4 chars).
+ */
+function namesMatch(listName: string, instacartName: string): boolean {
+  const normalize = (s: string) =>
+    s.toLowerCase().replace(/[^a-z0-9 ]/g, ' ').split(/\s+/).filter(Boolean);
+
+  const listWords = normalize(listName);
+  const instWords = normalize(instacartName);
+
+  // Exact substring match (covers brand + product combos)
+  if (instacartName.toLowerCase().includes(listName.toLowerCase())) return true;
+  if (listName.toLowerCase().includes(instacartName.toLowerCase())) return true;
+
+  // Shared significant words (≥4 chars)
+  const significant = listWords.filter((w) => w.length >= 4);
+  return significant.some((w) => instWords.includes(w));
+}
+
 export const TOOL_DEFINITIONS = [
   {
     name: 'get_due_store',
@@ -109,6 +159,47 @@ export const TOOL_DEFINITIONS = [
       properties: {
         list_id:      { type: 'string' },
         actual_spend: { type: 'number' },
+      },
+    },
+  },
+  {
+    name: 'reconcile_list',
+    description:
+      'Reconciles a shopping list against actual Instacart order data. '
+      + 'Accepts the list ID, the actual amount paid, and an array of Instacart '
+      + 'line items (name, status, quantity, price_paid). '
+      + 'Automatically matches list items to Instacart items by name, corrects '
+      + 'check states (delivered → checked, refunded → unchecked), updates the '
+      + 'actual spend, and returns a full diff: matched items, list items with '
+      + 'no Instacart match, and Instacart purchases not on the list. '
+      + 'Works on both active and complete lists.',
+    inputSchema: {
+      type: 'object',
+      required: ['list_id', 'actual_spend', 'instacart_items'],
+      properties: {
+        list_id: {
+          type: 'string',
+          description: 'The shopping list ID to reconcile',
+        },
+        actual_spend: {
+          type: 'number',
+          description: 'Total amount actually paid (from Instacart order total)',
+        },
+        instacart_items: {
+          type: 'array',
+          description: 'Line items from the Instacart order',
+          items: {
+            type: 'object',
+            required: ['name', 'status'],
+            properties: {
+              name:       { type: 'string', description: 'Product description from Instacart' },
+              status:     { type: 'string', enum: ['Delivered', 'Refund', 'Partial Refund'], description: 'Delivery outcome' },
+              quantity:   { type: 'number', description: 'Quantity ordered' },
+              price_paid: { type: 'number', description: 'Amount charged after promotions' },
+              store:      { type: 'string', description: 'Store slug (e.g. sams-club, harristeeter)' },
+            },
+          },
+        },
       },
     },
   },
@@ -225,6 +316,87 @@ async function dispatch(
         args['list_id']       as string,
         args['actual_spend']  as number | undefined
       );
+
+    case 'reconcile_list': {
+      const listId       = args['list_id'] as string;
+      const actualSpend  = args['actual_spend'] as number;
+      const instacartItems = args['instacart_items'] as InstacartLineItem[];
+
+      // 1. Fetch the current list items
+      const listData = await gql.getListItems(listId) as {
+        items_by_category: Record<string, ListItem[]>;
+      };
+      const allListItems: ListItem[] = Object.values(listData.items_by_category).flat();
+
+      // 2. Match list items to Instacart items by fuzzy name
+      const matched: Array<{
+        list_item: string;
+        instacart_item: string;
+        status: string;
+        price_paid?: number;
+        action: string;
+      }> = [];
+      const unmatchedInstacart: InstacartLineItem[] = [];
+      const usedListItemIds = new Set<string>();
+
+      for (const inItem of instacartItems) {
+        const listItem = allListItems.find(
+          (li) => !usedListItemIds.has(li.id) && namesMatch(li.name, inItem.name)
+        );
+
+        if (listItem) {
+          usedListItemIds.add(listItem.id);
+          const delivered = inItem.status === 'Delivered' || inItem.status === 'Partial Refund';
+          const note = inItem.status === 'Refund'
+            ? `Refunded per Instacart order — not delivered`
+            : inItem.status === 'Partial Refund'
+            ? `Partial refund per Instacart order`
+            : `Delivered per Instacart order`;
+
+          matched.push({
+            list_item:      listItem.name,
+            instacart_item: inItem.name,
+            status:         inItem.status,
+            price_paid:     inItem.price_paid,
+            action:         delivered ? 'checked' : 'unchecked',
+          });
+
+          // Only update if the current state differs or notes should be added
+          const needsUpdate = listItem.checked !== delivered || !listItem.notes?.includes('Instacart');
+          if (needsUpdate) {
+            await gql.updateListItem(listId, listItem.id, delivered, note);
+          }
+        } else {
+          unmatchedInstacart.push(inItem);
+        }
+      }
+
+      // 3. List items with no Instacart match
+      const unmatchedList = allListItems
+        .filter((li) => !usedListItemIds.has(li.id))
+        .map((li) => ({ id: li.id, name: li.name, was_checked: li.checked }));
+
+      // 4. Correct the spend
+      await gql.completeList(listId, actualSpend);
+
+      return {
+        list_id:      listId,
+        actual_spend: actualSpend,
+        summary: {
+          matched:             matched.length,
+          unmatched_on_list:   unmatchedList.length,
+          untracked_purchases: unmatchedInstacart.length,
+        },
+        matched,
+        unmatched_on_list:   unmatchedList,
+        untracked_purchases: unmatchedInstacart.map((i) => ({
+          name:       i.name,
+          status:     i.status,
+          quantity:   i.quantity,
+          price_paid: i.price_paid,
+        })),
+      };
+    }
 
     case 'search_products': {
       if (!kroger) throw new Error('Kroger API not configured (missing KROGER_CLIENT_ID / KROGER_CLIENT_SECRET)');
