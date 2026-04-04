@@ -13,7 +13,10 @@ const schema = a.schema({
       notes: a.string(),
       isCustom: a.boolean().default(false),
     })
-    .authorization(allow => [allow.owner()]),
+    .authorization(allow => [
+      allow.owner(),
+      allow.group('family').to(['create', 'read', 'update', 'delete']),
+    ]),
 
   ShoppingList: a
     .model({
@@ -26,6 +29,7 @@ const schema = a.schema({
     })
     .authorization(allow => [
       allow.owner(),
+      allow.group('family').to(['create', 'read', 'update', 'delete']),
       allow.publicApiKey().to(['create', 'read', 'update', 'delete']),
     ]),
 
@@ -45,6 +49,7 @@ const schema = a.schema({
     })
     .authorization(allow => [
       allow.owner(),
+      allow.group('family').to(['create', 'read', 'update', 'delete']),
       allow.publicApiKey().to(['create', 'read', 'update', 'delete']),
     ]),
 
@@ -59,6 +64,7 @@ const schema = a.schema({
     })
     .authorization(allow => [
       allow.owner(),
+      allow.group('family').to(['create', 'read', 'update', 'delete']),
       allow.publicApiKey().to(['create', 'read']),
     ]),
 
@@ -78,6 +84,7 @@ const schema = a.schema({
     })
     .authorization(allow => [
       allow.owner(),
+      allow.group('family').to(['create', 'read', 'update', 'delete']),
       allow.publicApiKey().to(['create', 'read', 'update', 'delete']),
     ]),
 
@@ -94,6 +101,7 @@ const schema = a.schema({
     })
     .authorization(allow => [
       allow.owner(),
+      allow.group('family').to(['create', 'read', 'update', 'delete']),
       allow.publicApiKey().to(['create', 'read', 'update', 'delete']),
     ]),
 });
