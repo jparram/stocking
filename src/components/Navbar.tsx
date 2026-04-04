@@ -1,4 +1,5 @@
 import { Link, useLocation } from 'react-router-dom';
+import { useAuthenticator } from '@aws-amplify/ui-react';
 
 const NAV_LINKS = [
   { to: '/', label: 'Dashboard', icon: '🏠' },
@@ -11,6 +12,7 @@ const NAV_LINKS = [
 
 export default function Navbar() {
   const location = useLocation();
+  const { signOut } = useAuthenticator();
 
   return (
     <nav className="bg-white border-b border-brand-border sticky top-0 z-50 shadow-sm">
@@ -43,6 +45,12 @@ export default function Navbar() {
                 </Link>
               );
             })}
+            <button
+              onClick={signOut}
+              className="px-3 py-2 rounded-md text-sm font-medium text-brand-muted hover:bg-brand-bg hover:text-brand-text transition-colors"
+            >
+              Sign Out
+            </button>
           </div>
         </div>
 
@@ -65,6 +73,13 @@ export default function Navbar() {
               </Link>
             );
           })}
+          <button
+            onClick={signOut}
+            className="flex flex-col items-center text-xs gap-0.5 px-2 text-brand-muted"
+          >
+            <span className="text-lg">🚪</span>
+            <span>Sign Out</span>
+          </button>
         </div>
       </div>
     </nav>
