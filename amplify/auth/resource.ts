@@ -10,4 +10,5 @@ export const auth = defineAuth({
       required: false,
     },
   },
+  groups: ['family'],
 });
