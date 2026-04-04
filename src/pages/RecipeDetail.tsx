@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useNavigate, useParams, Link } from 'react-router-dom';
 import { useRecipes } from '../hooks/useRecipes';
-import type { AppState, Recipe, RecipeIngredient, ShoppingList, ShoppingListItem } from '../types';
+import type { AppState, Recipe, RecipeIngredient, ShoppingList, ShoppingListItem, Store } from '../types';
 import { MASTER_CATALOG } from '../data/masterCatalog';
 import { formatDate, generateId, storeLabel } from '../utils';
 
@@ -40,11 +40,39 @@ function AddToListModal({ ingredients, lists, onConfirm, onClose }: AddToListMod
   const catalogIngredients = ingredients.filter(i => i.catalogItemId);
   const noCatalogIngredients = ingredients.filter(i => !i.catalogItemId);
 
-  const [checked, setChecked] = useState<Set<string>>(
-    () => new Set(catalogIngredients.map(i => i.id))
-  );
-  const activeLists = lists.filter(l => l.status !== 'complete');
+  const [store, setStore] = useState<Store>('sams');
+
+  function relevantCatalogIds(s: Store): Set<string> {
+    return new Set(
+      catalogIngredients
+        .filter(i => {
+          const item = MASTER_CATALOG.find(c => c.id === i.catalogItemId);
+          return item && (s === 'both' || item.store === s || item.store === 'both');
+        })
+        .map(i => i.id)
+    );
+  }
+
+  const [checked, setChecked] = useState<Set<string>>(() => relevantCatalogIds('sams'));
+
+  const activeLists = lists.filter(l => {
+    if (l.status === 'complete') return false;
+    if (store === 'both') return true;
+    return l.store === store || l.store === 'both';
+  });
+
   const [targetListId, setTargetListId] = useState(activeLists[0]?.id ?? '');
+
+  function handleStoreChange(newStore: Store) {
+    setStore(newStore);
+    setChecked(relevantCatalogIds(newStore));
+    const filtered = lists.filter(l => {
+      if (l.status === 'complete') return false;
+      if (newStore === 'both') return true;
+      return l.store === newStore || l.store === 'both';
+    });
+    setTargetListId(filtered[0]?.id ?? '');
+  }
 
   useEffect(() => {
     const hasValidSelection = activeLists.some(list => list.id === targetListId);
@@ -94,6 +122,29 @@ function AddToListModal({ ingredients, lists, onConfirm, onClose }: AddToListMod
         <div className="px-6 pt-6 pb-4 border-b border-brand-border">
           <h2 className="text-lg font-bold text-brand-text">Add Ingredients to Shopping List</h2>
           <p className="text-sm text-brand-muted mt-1">Select which ingredients to add, then choose a list.</p>
+        </div>
+
+        {/* Store selector */}
+        <div className="px-6 pt-4 pb-2">
+          <p className="text-xs font-semibold text-brand-muted uppercase tracking-wide mb-2">Store</p>
+          <div className="flex gap-2">
+            {(['sams', 'ht', 'both'] as Store[]).map(s => (
+              <button
+                key={s}
+                type="button"
+                onClick={() => handleStoreChange(s)}
+                className={`flex-1 text-sm font-medium px-3 py-1.5 rounded-lg border transition-colors ${
+                  store === s
+                    ? s === 'ht'
+                      ? 'bg-ht text-white border-ht'
+                      : 'bg-sams text-white border-sams'
+                    : 'border-brand-border text-brand-muted hover:bg-brand-bg'
+                }`}
+              >
+                {storeLabel(s)}
+              </button>
+            ))}
+          </div>
         </div>
 
         {/* Ingredient list */}
@@ -516,6 +567,13 @@ export default function RecipeDetail({ state, updateList }: RecipeDetailProps) {
           >
             ✏️ Edit
           </Link>
+          <button
+            type="button"
+            onClick={() => setShowAddModal(true)}
+            className="border border-sams text-sams text-sm font-medium px-4 py-2 rounded-lg hover:bg-sams-light transition-colors"
+          >
+            🛒 Add to List
+          </button>
           <button
             type="button"
             onClick={handleMarkMadeToday}
