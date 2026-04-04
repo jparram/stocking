@@ -3,7 +3,7 @@ import { useNavigate, useParams, Link } from 'react-router-dom';
 import { useRecipes } from '../hooks/useRecipes';
 import type { AppState, Recipe, RecipeIngredient, ShoppingList, ShoppingListItem, Store } from '../types';
 import { MASTER_CATALOG } from '../data/masterCatalog';
-import { formatDate, generateId, storeLabel } from '../utils';
+import { formatDate, generateId, storeColor, storeLabel } from '../utils';
 
 // ─── Props ────────────────────────────────────────────────────────────────────
 interface RecipeDetailProps {
@@ -26,6 +26,12 @@ function ingredientLabel(ing: RecipeIngredient): string {
   if (ing.unit) parts.push(ing.unit);
   parts.push(ing.name);
   return parts.join(' ');
+}
+
+function activeListMatchesStore(l: ShoppingList, s: Store): boolean {
+  if (l.status === 'complete') return false;
+  if (s === 'both') return true;
+  return l.store === s || l.store === 'both';
 }
 
 // ─── Add to Shopping List Modal ───────────────────────────────────────────────
@@ -55,22 +61,14 @@ function AddToListModal({ ingredients, lists, onConfirm, onClose }: AddToListMod
 
   const [checked, setChecked] = useState<Set<string>>(() => relevantCatalogIds('sams'));
 
-  const activeLists = lists.filter(l => {
-    if (l.status === 'complete') return false;
-    if (store === 'both') return true;
-    return l.store === store || l.store === 'both';
-  });
+  const activeLists = lists.filter(l => activeListMatchesStore(l, store));
 
   const [targetListId, setTargetListId] = useState(activeLists[0]?.id ?? '');
 
   function handleStoreChange(newStore: Store) {
     setStore(newStore);
     setChecked(relevantCatalogIds(newStore));
-    const filtered = lists.filter(l => {
-      if (l.status === 'complete') return false;
-      if (newStore === 'both') return true;
-      return l.store === newStore || l.store === 'both';
-    });
+    const filtered = lists.filter(l => activeListMatchesStore(l, newStore));
     setTargetListId(filtered[0]?.id ?? '');
   }
 
@@ -135,9 +133,7 @@ function AddToListModal({ ingredients, lists, onConfirm, onClose }: AddToListMod
                 onClick={() => handleStoreChange(s)}
                 className={`flex-1 text-sm font-medium px-3 py-1.5 rounded-lg border transition-colors ${
                   store === s
-                    ? s === 'ht'
-                      ? 'bg-ht text-white border-ht'
-                      : 'bg-sams text-white border-sams'
+                    ? `bg-${storeColor(s)} text-white border-${storeColor(s)}`
                     : 'border-brand-border text-brand-muted hover:bg-brand-bg'
                 }`}
               >
