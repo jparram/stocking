@@ -26,13 +26,21 @@ const backend = defineBackend({
 });
 
 // ---------------------------------------------------------------------------
-// Seed a default admin user so the app is immediately usable after first deploy.
-// Override via environment variables before running `npx ampx sandbox` or CI/CD:
-//   SEED_USER_EMAIL    – defaults to admin@example.com
-//   SEED_USER_PASSWORD – defaults to Stocking123! (change after first login)
+// Seed an admin user so the app is immediately usable after first deploy.
+// These credentials must be provided explicitly before running `npx ampx sandbox`
+// or CI/CD so that no insecure plaintext defaults are synthesized into
+// deployment artifacts:
+//   SEED_USER_EMAIL
+//   SEED_USER_PASSWORD
 // ---------------------------------------------------------------------------
-const seedEmail = process.env.SEED_USER_EMAIL ?? 'admin@example.com';
-const seedPassword = process.env.SEED_USER_PASSWORD ?? 'Stocking123!';
+const seedEmail = process.env.SEED_USER_EMAIL;
+const seedPassword = process.env.SEED_USER_PASSWORD;
+
+if (!seedEmail || !seedPassword) {
+  throw new Error(
+    'Missing required seed user credentials. Set both SEED_USER_EMAIL and SEED_USER_PASSWORD before deploying.',
+  );
+}
 const { userPool } = backend.auth.resources;
 const authStack = Stack.of(userPool);
 
