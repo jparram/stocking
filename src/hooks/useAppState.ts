@@ -48,7 +48,7 @@ export function useAppState() {
   const clientRef = useRef<Client | null>(null);
   function getClient(): Client {
     if (!clientRef.current) {
-      clientRef.current = generateClient<Schema>({ authMode: 'apiKey' });
+      clientRef.current = generateClient<Schema>({ authMode: 'userPool' });
     }
     return clientRef.current;
   }
