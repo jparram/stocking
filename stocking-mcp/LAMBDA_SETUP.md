@@ -44,7 +44,7 @@ aws iam put-role-policy \
         "cognito-idp:AdminRemoveUserFromGroup",
         "cognito-idp:AdminListGroupsForUser"
       ],
-      "Resource": "arn:aws:cognito-idp:us-east-1:060712839465:userpool/*"
+      "Resource": "arn:aws:cognito-idp:us-east-1:YOUR_ACCOUNT_ID:userpool/*"
     }]
   }'
 ```
@@ -61,7 +61,7 @@ aws lambda create-function \
   --profile jp-admin \
   --function-name stocking-mcp \
   --runtime nodejs20.x \
-  --role arn:aws:iam::060712839465:role/stocking-mcp-role \
+  --role arn:aws:iam::YOUR_ACCOUNT_ID:role/stocking-mcp-role \
   --handler dist/lambda.handler \
   --zip-file fileb://mcp-lambda.zip \
   --timeout 30 \
@@ -128,7 +128,7 @@ aws lambda add-permission \
   --statement-id apigw-invoke \
   --action lambda:InvokeFunction \
   --principal apigateway.amazonaws.com \
-  --source-arn "arn:aws:execute-api:us-east-1:060712839465:${API_ID}/*/*/"
+  --source-arn "arn:aws:execute-api:us-east-1:YOUR_ACCOUNT_ID:${API_ID}/*/*/"
 
 echo "API endpoint: https://${API_ID}.execute-api.us-east-1.amazonaws.com/"
 ```
@@ -162,7 +162,7 @@ aws iam create-role \
     "Statement": [{
       "Effect": "Allow",
       "Principal": {
-        "Federated": "arn:aws:iam::060712839465:oidc-provider/token.actions.githubusercontent.com"
+        "Federated": "arn:aws:iam::YOUR_ACCOUNT_ID:oidc-provider/token.actions.githubusercontent.com"
       },
       "Action": "sts:AssumeRoleWithWebIdentity",
       "Condition": {
@@ -190,7 +190,7 @@ aws iam put-role-policy \
         "lambda:GetFunctionUrlConfig",
         "lambda:WaitForFunctionUpdated"
       ],
-      "Resource": "arn:aws:lambda:*:060712839465:function:stocking-mcp"
+      "Resource": "arn:aws:lambda:*:YOUR_ACCOUNT_ID:function:stocking-mcp"
     }]
   }'
 ```
@@ -204,7 +204,7 @@ gh secret set AWS_REGION \
 
 gh secret set AWS_ROLE_ARN \
   --repo jparram/stocking \
-  --body "arn:aws:iam::060712839465:role/stocking-mcp-deploy"
+  --body "arn:aws:iam::YOUR_ACCOUNT_ID:role/stocking-mcp-deploy"
 ```
 
 ---

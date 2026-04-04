@@ -63,6 +63,9 @@ const CORS_HEADERS = {
   'Access-Control-Allow-Headers': 'Content-Type, Authorization',
 };
 
+// Defined at module scope so it is allocated once, not on every invocation.
+const ADMIN_METHODS = new Set(['admin.listMembers', 'admin.inviteMember', 'admin.removeMember']);
+
 export const handler = async (event: LambdaEvent): Promise<LambdaResponse> => {
   const method =
     event.httpMethod ??
@@ -96,8 +99,6 @@ export const handler = async (event: LambdaEvent): Promise<LambdaResponse> => {
     '';
 
   const isAdminMethod = rpc.method.startsWith('admin.');
-
-  const ADMIN_METHODS = new Set(['admin.listMembers', 'admin.inviteMember', 'admin.removeMember']);
 
   if (isAdminMethod) {
     // Reject unknown admin method names before doing any Cognito calls

@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { fetchAuthSession } from 'aws-amplify/auth';
 import type { AppState, HouseholdSettings, Store } from '../types';
 import { storeLabel } from '../utils';
@@ -34,6 +34,8 @@ export default function Settings({ state, onUpdate }: SettingsProps) {
   const [form, setForm] = useState<HouseholdSettings>({ ...state.settings });
   const [saved, setSaved] = useState(false);
   const [isAdmin, setIsAdmin] = useState(false);
+  // Cache the admin check so it only runs once per mount, not on every re-render.
+  const adminChecked = useRef(false);
 
   const { members, loading: membersLoading, error: membersError, loadMembers, inviteMember, removeMember } =
     useFamilyAdmin();
@@ -45,6 +47,8 @@ export default function Settings({ state, onUpdate }: SettingsProps) {
   const [removingUsername, setRemovingUsername] = useState<string | null>(null);
 
   useEffect(() => {
+    if (adminChecked.current) return;
+    adminChecked.current = true;
     checkIsAdmin().then(setIsAdmin);
   }, []);
 

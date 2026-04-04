@@ -44,7 +44,11 @@ async function verifyAdmin(accessToken: string): Promise<string> {
     throw new Error('COGNITO_USER_POOL_ID is not configured on this Lambda.');
   }
 
-  // GetUser validates the token with Cognito and returns user attributes
+  // We call GetUser with the raw access token rather than decoding the JWT
+  // ourselves. This delegates signature verification and expiry checking to
+  // Cognito — if the token is invalid or expired, Cognito returns an error and
+  // we never proceed. Trusting a locally-decoded claim without this server-side
+  // check would allow a tampered or expired token to pass.
   const userResp = await cognitoClient.send(
     new GetUserCommand({ AccessToken: accessToken })
   );
@@ -84,21 +88,34 @@ export async function listFamilyMembers(
 ): Promise<FamilyMember[]> {
   await verifyAdmin(accessToken);
 
-  const resp = await cognitoClient.send(
-    new ListUsersInGroupCommand({
-      UserPoolId: USER_POOL_ID,
-      GroupName: 'family',
-    })
-  );
+  const users: FamilyMember[] = [];
+  let nextToken: string | undefined;
 
-  return (resp.Users ?? []).map((u) => ({
-    sub: u.Attributes?.find((a) => a.Name === 'sub')?.Value ?? '',
-    email: u.Attributes?.find((a) => a.Name === 'email')?.Value ?? '',
-    username: u.Username ?? '',
-    status: u.UserStatus ?? 'UNKNOWN',
-    enabled: u.Enabled ?? true,
-    createdAt: u.UserCreateDate?.toISOString(),
-  }));
+  // ListUsersInGroup returns at most 60 users per page; loop until exhausted.
+  do {
+    const resp = await cognitoClient.send(
+      new ListUsersInGroupCommand({
+        UserPoolId: USER_POOL_ID,
+        GroupName: 'family',
+        NextToken: nextToken,
+      })
+    );
+
+    for (const u of resp.Users ?? []) {
+      users.push({
+        sub: u.Attributes?.find((a) => a.Name === 'sub')?.Value ?? '',
+        email: u.Attributes?.find((a) => a.Name === 'email')?.Value ?? '',
+        username: u.Username ?? '',
+        status: u.UserStatus ?? 'UNKNOWN',
+        enabled: u.Enabled ?? true,
+        createdAt: u.UserCreateDate?.toISOString(),
+      });
+    }
+
+    nextToken = resp.NextToken;
+  } while (nextToken);
+
+  return users;
 }
 
 /** Create a new Cognito user and add them to the 'family' group. */
