@@ -1,14 +1,6 @@
 /**
  * AppSync GraphQL client for the MCP server.
  * Uses API key auth — separate from the user's Cognito session.
- *
- * Requires amplify/data/resource.ts to have:
- *   authorizationModes: {
- *     defaultAuthorizationMode: 'userPool',
- *     apiKeyAuthorizationMode: { expiresInDays: 365 },
- *   }
- * and ShoppingList / ShoppingListItem models to include:
- *   allow.apiKey().to(['create', 'read', 'update'])
  */
 
 export interface ListInput {
@@ -54,6 +46,12 @@ export interface RecipeIngredientInput {
   sortOrder?: number;
 }
 
+export interface ReconcileItemUpdate {
+  item_id: string;
+  checked: boolean;
+  notes?: string;
+}
+
 export class GraphQLClient {
   constructor(
     private endpoint: string,
@@ -89,7 +87,6 @@ export class GraphQLClient {
 
   // ── CREATE LIST + ITEMS ───────────────────────────────────────────────────
   async createShoppingList(input: ListInput): Promise<{ id: string }> {
-    // 1. Create the list header
     const listData = await this.query<{
       createShoppingList: { id: string };
     }>(
@@ -108,31 +105,53 @@ export class GraphQLClient {
     );
 
     const listId = listData.createShoppingList.id;
-
-    // 2. Create each line item linked to the list
     for (const item of input.items) {
-      await this.query(
-        `mutation CreateShoppingListItem($input: CreateShoppingListItemInput!) {
-          createShoppingListItem(input: $input) { id }
-        }`,
-        {
-          input: {
-            listId,
-            itemId:     item.itemId,
-            name:       item.name,
-            category:   item.category,
-            store:      item.store,
-            quantity:   item.quantity,
-            unit:       item.unit,
-            approxCost: item.approxCost,
-            checked:    item.checked,
-            notes:      item.notes,
-          },
-        }
-      );
+      await this.createShoppingListItem(listId, item);
     }
-
     return { id: listId };
+  }
+
+  // ── ADD SINGLE ITEM TO EXISTING LIST ─────────────────────────────────────
+  async addItemToList(listId: string, item: ItemInput): Promise<{ id: string }> {
+    return this.createShoppingListItem(listId, item);
+  }
+
+  // ── SHARED ITEM CREATION MUTATION ─────────────────────────────────────────
+  private async createShoppingListItem(
+    listId: string,
+    item: ItemInput
+  ): Promise<{ id: string }> {
+    const data = await this.query<{ createShoppingListItem: { id: string } }>(
+      `mutation CreateShoppingListItem($input: CreateShoppingListItemInput!) {
+        createShoppingListItem(input: $input) { id }
+      }`,
+      {
+        input: {
+          listId,
+          itemId:     item.itemId,
+          name:       item.name,
+          category:   item.category,
+          store:      item.store,
+          quantity:   item.quantity,
+          unit:       item.unit,
+          approxCost: item.approxCost,
+          checked:    item.checked,
+          notes:      item.notes,
+        },
+      }
+    );
+    return { id: data.createShoppingListItem.id };
+  }
+
+  // ── DELETE LIST ITEM ──────────────────────────────────────────────────────
+  async deleteListItem(itemId: string): Promise<{ id: string }> {
+    const data = await this.query<{ deleteShoppingListItem: { id: string } }>(
+      `mutation DeleteShoppingListItem($input: DeleteShoppingListItemInput!) {
+        deleteShoppingListItem(input: $input) { id }
+      }`,
+      { input: { id: itemId } }
+    );
+    return { id: data.deleteShoppingListItem.id };
   }
 
   // ── LIST SHOPPING LISTS ───────────────────────────────────────────────────
@@ -155,23 +174,41 @@ export class GraphQLClient {
       { limit }
     );
 
-    let lists = data.listShoppingLists.items as Array<
-      Record<string, unknown>
-    >;
+    let lists = data.listShoppingLists.items as Array<Record<string, unknown>>;
     if (store)  lists = lists.filter((l) => l.store === store);
     if (status) lists = lists.filter((l) => l.status === status);
     return lists.slice(0, limit);
+  }
+
+  // ── LIST ALL COMPLETED LISTS (for spend summary) ──────────────────────────
+  async listAllCompletedLists(): Promise<Array<{
+    id: string; name: string; store: string; totalSpend: number;
+    weekOf: string; createdAt: string; status: string;
+  }>> {
+    const data = await this.query<{
+      listShoppingLists: { items: unknown[] };
+    }>(
+      `query ListAllShoppingLists {
+        listShoppingLists(limit: 200) {
+          items {
+            id name weekOf store status totalSpend createdAt
+          }
+        }
+      }`
+    );
+    return (data.listShoppingLists.items as Array<Record<string, unknown>>)
+      .filter((l) => l['status'] === 'complete') as Array<{
+        id: string; name: string; store: string; totalSpend: number;
+        weekOf: string; createdAt: string; status: string;
+      }>;
   }
 
   // ── GET LIST ITEMS ────────────────────────────────────────────────────────
   async getListItems(listId: string): Promise<unknown> {
     const data = await this.query<{
       getShoppingList: {
-        id: string;
-        name: string;
-        store: string;
-        status: string;
-        totalSpend: number;
+        id: string; name: string; store: string;
+        status: string; totalSpend: number;
         items: { items: Array<Record<string, unknown>> };
       };
     }>(
@@ -191,7 +228,6 @@ export class GraphQLClient {
     const list = data.getShoppingList;
     const rawItems = list.items.items;
 
-    // Group by category for readability
     const grouped: Record<string, unknown[]> = {};
     for (const item of rawItems) {
       const cat = item['category'] as string;
@@ -229,10 +265,7 @@ export class GraphQLClient {
   }
 
   // ── COMPLETE LIST ─────────────────────────────────────────────────────────
-  async completeList(
-    listId: string,
-    actualSpend?: number
-  ): Promise<unknown> {
+  async completeList(listId: string, actualSpend?: number): Promise<unknown> {
     const input: Record<string, unknown> = { id: listId, status: 'complete' };
     if (actualSpend !== undefined) input['totalSpend'] = actualSpend;
 
@@ -478,5 +511,19 @@ export class GraphQLClient {
       { input: { id: ingredientId } }
     );
     return data.deleteRecipeIngredient;
+  }
+
+  // ── RECONCILE LIST ────────────────────────────────────────────────────────
+  async reconcileList(
+    listId: string,
+    actualSpend: number,
+    itemUpdates: ReconcileItemUpdate[]
+  ): Promise<{ list_id: string; actual_spend: number; items_updated: number }> {
+    await Promise.all(
+      itemUpdates.map((u) => this.updateListItem(listId, u.item_id, u.checked, u.notes))
+    );
+    await this.completeList(listId, actualSpend);
+    return { list_id: listId, actual_spend: actualSpend, items_updated: itemUpdates.length };
+
   }
 }

@@ -1,0 +1,24 @@
+{
+  "servers": {
+    "memory": {
+      "type": "stdio",
+      "command": "/Users/jparramore/.nvm/versions/node/v20.19.4/bin/node",
+      "args": [
+        "/Users/jparramore/.nvm/versions/node/v20.19.4/lib/node_modules/@modelcontextprotocol/server-memory/dist/index.js"
+      ],
+      "env": {
+        "MEMORY_FILE_PATH": "/Users/jparramore/.mcp-memory/memory.json"
+      }
+    },
+    "memory-project": {
+      "type": "stdio",
+      "command": "/Users/jparramore/.nvm/versions/node/v20.19.4/bin/node",
+      "args": [
+        "/Users/jparramore/.nvm/versions/node/v20.19.4/lib/node_modules/@modelcontextprotocol/server-memory/dist/index.js"
+      ],
+      "env": {
+        "MEMORY_FILE_PATH": "/Users/jparramore/src/stocking/.mcp-memory/memory.json"
+      }
+    }
+  }
+}

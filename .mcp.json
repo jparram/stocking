@@ -1,0 +1,22 @@
+{
+  "mcpServers": {
+    "memory-project": {
+      "command": "/Users/jparramore/.nvm/versions/node/v20.19.4/bin/node",
+      "args": [
+        "/Users/jparramore/.nvm/versions/node/v20.19.4/lib/node_modules/@modelcontextprotocol/server-memory/dist/index.js"
+      ],
+      "env": {
+        "MEMORY_FILE_PATH": "/Users/jparramore/src/stocking/.mcp-memory/memory.json"
+      }
+    },
+    "stocking": {
+      "command": "/Users/jparramore/.nvm/versions/node/v20.19.4/bin/node",
+      "args": ["/Users/jparramore/src/stocking/stocking-mcp/dist/index.js"],
+      "env": {
+        "APPSYNC_ENDPOINT": "https://lxgcygzqmrc3hjkpteykhk5fr4.appsync-api.us-east-1.amazonaws.com/graphql",
+        "APPSYNC_API_KEY": "da2-odprtfoy6jhcloougscqjbcp5q",
+        "CADENCE_START_DATE": "2026-01-04"
+      }
+    }
+  }
+}
