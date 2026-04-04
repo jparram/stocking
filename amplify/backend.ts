@@ -16,7 +16,7 @@ import { PolicyStatement } from 'aws-cdk-lib/aws-iam';
  *
  * Resources:
  * - Auth: Cognito User Pool (email/password), groups: ['family']
- * - Data: DynamoDB via AppSync GraphQL (Item, ShoppingList, ShoppingListItem, WeeklyLog)
+ * - Data: DynamoDB via AppSync GraphQL API
  * - Storage: S3 (for shared list PDFs)
  */
 const backend = defineBackend({
