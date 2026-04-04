@@ -1,6 +1,8 @@
-import { useState } from 'react';
+import { useState, useEffect, useRef } from 'react';
+import { fetchAuthSession } from 'aws-amplify/auth';
 import type { AppState, HouseholdSettings, Store } from '../types';
 import { storeLabel } from '../utils';
+import { useFamilyAdmin } from '../hooks/useFamilyAdmin';
 
 interface SettingsProps {
   state: AppState;
@@ -13,9 +15,48 @@ const STORE_OPTIONS: { value: Store; label: string }[] = [
   { value: 'ht', label: 'Harris Teeter' },
 ];
 
+const ADMIN_API_CONFIGURED = !!import.meta.env.VITE_ADMIN_API_URL;
+
+/** Returns true if the current Cognito user is in the 'admin' group. */
+async function checkIsAdmin(): Promise<boolean> {
+  try {
+    const session = await fetchAuthSession();
+    const groups = session.tokens?.accessToken?.payload[
+      'cognito:groups'
+    ] as string[] | undefined;
+    return groups?.includes('admin') ?? false;
+  } catch {
+    return false;
+  }
+}
+
 export default function Settings({ state, onUpdate }: SettingsProps) {
   const [form, setForm] = useState<HouseholdSettings>({ ...state.settings });
   const [saved, setSaved] = useState(false);
+  const [isAdmin, setIsAdmin] = useState(false);
+  // Cache the admin check so it only runs once per mount, not on every re-render.
+  const adminChecked = useRef(false);
+
+  const { members, loading: membersLoading, error: membersError, loadMembers, inviteMember, removeMember } =
+    useFamilyAdmin();
+
+  const [inviteEmail, setInviteEmail] = useState('');
+  const [inviting, setInviting] = useState(false);
+  const [inviteSuccess, setInviteSuccess] = useState<string | null>(null);
+  const [inviteError, setInviteError] = useState<string | null>(null);
+  const [removingUsername, setRemovingUsername] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (adminChecked.current) return;
+    adminChecked.current = true;
+    checkIsAdmin().then(setIsAdmin);
+  }, []);
+
+  useEffect(() => {
+    if (isAdmin && ADMIN_API_CONFIGURED) {
+      loadMembers();
+    }
+  }, [isAdmin, loadMembers]);
 
   const handleChange = (key: keyof HouseholdSettings, value: string | number | Store) => {
     setForm(prev => ({ ...prev, [key]: value }));
@@ -33,6 +74,41 @@ export default function Settings({ state, onUpdate }: SettingsProps) {
     if (confirm('Reset all app data? This cannot be undone.')) {
       localStorage.clear();
       window.location.reload();
+    }
+  };
+
+  const handleInvite = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!inviteEmail.trim()) return;
+    setInviting(true);
+    setInviteError(null);
+    setInviteSuccess(null);
+    try {
+      await inviteMember(inviteEmail.trim());
+      setInviteSuccess(`Invite sent to ${inviteEmail.trim()}. They will receive an email with a temporary password.`);
+      setInviteEmail('');
+    } catch (err) {
+      setInviteError(err instanceof Error ? err.message : 'Failed to send invite.');
+    } finally {
+      setInviting(false);
+    }
+  };
+
+  const handleInviteEmailChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    setInviteEmail(e.target.value);
+    setInviteError(null);
+    setInviteSuccess(null);
+  };
+
+  const handleRemove = async (username: string, email: string) => {
+    if (!confirm(`Remove ${email} from the family group? They will lose access to shared data.`)) return;
+    setRemovingUsername(username);
+    try {
+      await removeMember(username);
+    } catch (err) {
+      alert(err instanceof Error ? err.message : 'Failed to remove member.');
+    } finally {
+      setRemovingUsername(null);
     }
   };
 
@@ -131,6 +207,105 @@ export default function Settings({ state, onUpdate }: SettingsProps) {
           </button>
         </div>
       </form>
+
+      {/* Family Members — admin only */}
+      {isAdmin && (
+        <div className="bg-white rounded-xl border border-brand-border shadow-sm overflow-hidden">
+          <div className="px-6 py-4 border-b border-brand-border bg-brand-bg flex items-center justify-between">
+            <h2 className="font-semibold text-brand-text">Family Members</h2>
+            {ADMIN_API_CONFIGURED && (
+              <button
+                type="button"
+                onClick={loadMembers}
+                disabled={membersLoading}
+                className="text-xs text-brand-muted hover:text-brand-text transition-colors disabled:opacity-50"
+              >
+                {membersLoading ? 'Loading…' : '↺ Refresh'}
+              </button>
+            )}
+          </div>
+
+          {!ADMIN_API_CONFIGURED ? (
+            <div className="px-6 py-5 text-sm text-brand-muted">
+              Set <code className="bg-brand-bg px-1 rounded">VITE_ADMIN_API_URL</code> to
+              the stocking-mcp Lambda endpoint to manage family members here.
+            </div>
+          ) : (
+            <div className="px-6 py-5 space-y-5">
+              {/* Member list */}
+              {membersError && (
+                <p className="text-sm text-red-600">{membersError}</p>
+              )}
+
+              {!membersLoading && members.length === 0 && !membersError && (
+                <p className="text-sm text-brand-muted">No members in the family group yet.</p>
+              )}
+
+              {members.length > 0 && (
+                <ul className="divide-y divide-brand-border">
+                  {members.map((m) => (
+                    <li key={m.sub} className="py-3 flex items-center justify-between gap-3">
+                      <div className="min-w-0">
+                        <p className="text-sm font-medium text-brand-text truncate">{m.email || m.username}</p>
+                        <p className="text-xs text-brand-muted">
+                          {m.status === 'FORCE_CHANGE_PASSWORD'
+                            ? 'Invite pending — awaiting first login'
+                            : m.status === 'CONFIRMED'
+                            ? 'Active'
+                            : m.status}
+                          {!m.enabled && ' · Disabled'}
+                        </p>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => handleRemove(m.username, m.email || m.username)}
+                        disabled={removingUsername === m.username}
+                        className="flex-shrink-0 text-xs text-red-600 hover:text-red-700 disabled:opacity-50 transition-colors"
+                      >
+                        {removingUsername === m.username ? 'Removing…' : 'Remove'}
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              )}
+
+              {/* Invite form */}
+              <form onSubmit={handleInvite} className="pt-2 border-t border-brand-border">
+                <label className="block text-sm font-medium text-brand-text mb-2">
+                  Invite a family member
+                </label>
+                <div className="flex gap-2">
+                  <input
+                    type="email"
+                    value={inviteEmail}
+                    onChange={handleInviteEmailChange}
+                    placeholder="their@email.com"
+                    required
+                    className="flex-1 border border-brand-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-sams"
+                  />
+                  <button
+                    type="submit"
+                    disabled={inviting || !inviteEmail.trim()}
+                    className="px-4 py-2 bg-sams text-white rounded-lg text-sm font-medium hover:bg-sams-dark transition-colors disabled:opacity-50"
+                  >
+                    {inviting ? 'Sending…' : 'Invite'}
+                  </button>
+                </div>
+                {inviteSuccess && (
+                  <p className="mt-2 text-sm text-green-600">{inviteSuccess}</p>
+                )}
+                {inviteError && (
+                  <p className="mt-2 text-sm text-red-600">{inviteError}</p>
+                )}
+                <p className="mt-2 text-xs text-brand-muted">
+                  They'll receive an email with a temporary password and be prompted to set
+                  a new one on first login.
+                </p>
+              </form>
+            </div>
+          )}
+        </div>
+      )}
 
       {/* App Info */}
       <div className="bg-white rounded-xl border border-brand-border shadow-sm overflow-hidden">

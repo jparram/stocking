@@ -111,3 +111,24 @@ const addToGroup = new AwsCustomResource(authStack, 'SeedAdminUserGroup', {
   ]),
 });
 addToGroup.node.addDependency(createUser);
+
+const addToAdminGroup = new AwsCustomResource(authStack, 'SeedAdminUserAdminGroup', {
+  onCreate: {
+    service: 'CognitoIdentityServiceProvider',
+    action: 'adminAddUserToGroup',
+    parameters: {
+      UserPoolId: userPool.userPoolId,
+      Username: seedEmail,
+      GroupName: 'admin',
+    },
+    physicalResourceId: PhysicalResourceId.of('seed-admin-user-admin-group'),
+    ignoreErrorCodesMatching: 'UserNotFoundException',
+  },
+  policy: AwsCustomResourcePolicy.fromStatements([
+    new PolicyStatement({
+      actions: ['cognito-idp:AdminAddUserToGroup'],
+      resources: [userPool.userPoolArn],
+    }),
+  ]),
+});
+addToAdminGroup.node.addDependency(createUser);
