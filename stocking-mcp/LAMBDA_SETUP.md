@@ -26,6 +26,27 @@ aws iam attach-role-policy \
   --profile jp-admin \
   --role-name stocking-mcp-role \
   --policy-arn arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+
+# Add inline policy for Cognito admin operations (family member management)
+aws iam put-role-policy \
+  --profile jp-admin \
+  --role-name stocking-mcp-role \
+  --policy-name stocking-mcp-cognito-admin \
+  --policy-document '{
+    "Version": "2012-10-17",
+    "Statement": [{
+      "Effect": "Allow",
+      "Action": [
+        "cognito-idp:GetUser",
+        "cognito-idp:ListUsersInGroup",
+        "cognito-idp:AdminCreateUser",
+        "cognito-idp:AdminAddUserToGroup",
+        "cognito-idp:AdminRemoveUserFromGroup",
+        "cognito-idp:AdminListGroupsForUser"
+      ],
+      "Resource": "arn:aws:cognito-idp:us-east-1:060712839465:userpool/*"
+    }]
+  }'
 ```
 
 ---
@@ -49,11 +70,14 @@ aws lambda create-function \
     APPSYNC_ENDPOINT=https://YOUR_ENDPOINT.appsync-api.us-east-1.amazonaws.com/graphql,
     APPSYNC_API_KEY=da2-YOUR_KEY,
     CADENCE_START_DATE=2026-01-04,
-    MCP_AUTH_TOKEN=YOUR_RANDOM_SECRET
+    MCP_AUTH_TOKEN=YOUR_RANDOM_SECRET,
+    COGNITO_USER_POOL_ID=us-east-1_XXXXXXXXX,
+    COGNITO_REGION=us-east-1,
+    ADMIN_USER_SUB=YOUR_COGNITO_USER_SUB
   }'
 ```
 
-Replace placeholder values — `APPSYNC_ENDPOINT` and `APPSYNC_API_KEY` come from `amplify_outputs.json` after an Amplify deploy. `MCP_AUTH_TOKEN` can be any random secret (e.g. `openssl rand -hex 32`).
+Replace placeholder values — `APPSYNC_ENDPOINT` and `APPSYNC_API_KEY` come from `amplify_outputs.json` after an Amplify deploy. `MCP_AUTH_TOKEN` can be any random secret (e.g. `openssl rand -hex 32`). `COGNITO_USER_POOL_ID` comes from `amplify_outputs.json` (`auth.user_pool_id`). `ADMIN_USER_SUB` is the Cognito `sub` of the admin user (find it in the Cognito console or via `aws cognito-idp admin-get-user`); if omitted, admin access is granted to all members of the `admin` Cognito group.
 
 ---
 

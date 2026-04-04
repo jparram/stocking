@@ -5,10 +5,13 @@
  * Each request is a single MCP JSON-RPC message; the response is the result.
  *
  * Environment variables (set in Lambda console or via GitHub Actions secrets):
- *   APPSYNC_ENDPOINT  — AppSync GraphQL URL
- *   APPSYNC_API_KEY   — AppSync API key
- *   CADENCE_START_DATE — First Sam's Sunday, e.g. 2026-01-04
- *   MCP_AUTH_TOKEN    — Secret token Claude sends in Authorization header
+ *   APPSYNC_ENDPOINT      — AppSync GraphQL URL
+ *   APPSYNC_API_KEY       — AppSync API key
+ *   CADENCE_START_DATE    — First Sam's Sunday, e.g. 2026-01-04
+ *   MCP_AUTH_TOKEN        — Secret token Claude sends in Authorization header
+ *   COGNITO_USER_POOL_ID  — Cognito User Pool ID (required for admin endpoints)
+ *   COGNITO_REGION        — AWS region for Cognito (default: us-east-1)
+ *   ADMIN_USER_SUB        — (optional) hardcoded admin Cognito sub
  */
 
 import { CadenceEngine } from './cadence.js';
@@ -16,6 +19,11 @@ import { GraphQLClient } from './graphql.js';
 import { KrogerClient } from './kroger.js';
 import { MASTER_CATALOG } from './catalog.js';
 import { TOOL_DEFINITIONS, handleToolCall } from './tools.js';
+import {
+  listFamilyMembers,
+  inviteFamilyMember,
+  removeFamilyMember,
+} from './cognitoAdmin.js';
 
 const cadence = new CadenceEngine(
   process.env['CADENCE_START_DATE'] ?? '2026-01-04'
@@ -66,22 +74,6 @@ export const handler = async (event: LambdaEvent): Promise<LambdaResponse> => {
     return { statusCode: 200, headers: CORS_HEADERS, body: '' };
   }
 
-  // Auth check
-  const authToken = process.env['MCP_AUTH_TOKEN'];
-  if (authToken) {
-    const incoming =
-      event.headers?.['authorization'] ??
-      event.headers?.['Authorization'] ??
-      '';
-    if (incoming !== `Bearer ${authToken}`) {
-      return {
-        statusCode: 401,
-        headers: CORS_HEADERS,
-        body: JSON.stringify({ error: 'Unauthorized' }),
-      };
-    }
-  }
-
   let body = event.body ?? '{}';
   if (event.isBase64Encoded) {
     body = Buffer.from(body, 'base64').toString('utf-8');
@@ -98,8 +90,93 @@ export const handler = async (event: LambdaEvent): Promise<LambdaResponse> => {
     };
   }
 
+  const incomingAuth =
+    event.headers?.['authorization'] ??
+    event.headers?.['Authorization'] ??
+    '';
+
+  const isAdminMethod = rpc.method.startsWith('admin.');
+
+  const ADMIN_METHODS = new Set(['admin.listMembers', 'admin.inviteMember', 'admin.removeMember']);
+
+  if (isAdminMethod) {
+    // Reject unknown admin method names before doing any Cognito calls
+    if (!ADMIN_METHODS.has(rpc.method)) {
+      return {
+        statusCode: 400,
+        headers: CORS_HEADERS,
+        body: JSON.stringify({
+          jsonrpc: '2.0',
+          id: rpc.id,
+          error: { code: -32601, message: `Unknown admin method: ${rpc.method}` },
+        }),
+      };
+    }
+    // Admin methods expect a Cognito access token — auth is verified inside each handler
+    if (!incomingAuth.startsWith('Bearer ')) {
+      return {
+        statusCode: 401,
+        headers: CORS_HEADERS,
+        body: JSON.stringify({ error: 'Authorization header with Bearer token required for admin methods.' }),
+      };
+    }
+  } else {
+    // Non-admin (MCP) methods use the shared MCP_AUTH_TOKEN
+    const authToken = process.env['MCP_AUTH_TOKEN'];
+    if (authToken && incomingAuth !== `Bearer ${authToken}`) {
+      return {
+        statusCode: 401,
+        headers: CORS_HEADERS,
+        body: JSON.stringify({ error: 'Unauthorized' }),
+      };
+    }
+  }
+
   try {
     let result: unknown;
+
+    // Admin JSON-RPC dispatch
+    if (isAdminMethod) {
+      const accessToken = incomingAuth.slice('Bearer '.length);
+
+      switch (rpc.method) {
+        case 'admin.listMembers':
+          result = { members: await listFamilyMembers(accessToken) };
+          break;
+
+        case 'admin.inviteMember': {
+          const { email } = rpc.params as { email: string };
+          if (!email) {
+            return {
+              statusCode: 400,
+              headers: CORS_HEADERS,
+              body: JSON.stringify({ jsonrpc: '2.0', id: rpc.id, error: { code: -32602, message: 'email is required' } }),
+            };
+          }
+          result = await inviteFamilyMember(accessToken, email);
+          break;
+        }
+
+        case 'admin.removeMember': {
+          const { username } = rpc.params as { username: string };
+          if (!username) {
+            return {
+              statusCode: 400,
+              headers: CORS_HEADERS,
+              body: JSON.stringify({ jsonrpc: '2.0', id: rpc.id, error: { code: -32602, message: 'username is required' } }),
+            };
+          }
+          result = await removeFamilyMember(accessToken, username);
+          break;
+        }
+      }
+
+      return {
+        statusCode: 200,
+        headers: CORS_HEADERS,
+        body: JSON.stringify({ jsonrpc: '2.0', id: rpc.id, result }),
+      };
+    }
 
     // MCP JSON-RPC dispatch
     switch (rpc.method) {
