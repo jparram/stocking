@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useNavigate, useParams, Link } from 'react-router-dom';
 import { useRecipes } from '../hooks/useRecipes';
-import type { AppState, Recipe, RecipeIngredient, ShoppingList, ShoppingListItem } from '../types';
+import type { AppState, Recipe, RecipeIngredient, ShoppingList, ShoppingListItem, Store } from '../types';
 import { MASTER_CATALOG } from '../data/masterCatalog';
 import { formatDate, generateId, storeLabel } from '../utils';
 
@@ -28,6 +28,25 @@ function ingredientLabel(ing: RecipeIngredient): string {
   return parts.join(' ');
 }
 
+function activeListMatchesStore(l: ShoppingList, s: Store): boolean {
+  if (l.status === 'complete') return false;
+  if (s === 'both') return true;
+  return l.store === s || l.store === 'both';
+}
+
+function storeButtonActiveClass(s: Store): string {
+  if (s === 'ht') return 'bg-ht text-white border-ht';
+  // 'sams' and 'both' intentionally use Sam's styling as a neutral default
+  return 'bg-sams text-white border-sams';
+}
+
+function getStoreButtonClassName(currentStore: Store, buttonStore: Store): string {
+  const base = 'flex-1 text-sm font-medium px-3 py-1.5 rounded-lg border transition-colors';
+  const active = storeButtonActiveClass(buttonStore);
+  const inactive = 'border-brand-border text-brand-muted hover:bg-brand-bg';
+  return `${base} ${currentStore === buttonStore ? active : inactive}`;
+}
+
 // ─── Add to Shopping List Modal ───────────────────────────────────────────────
 interface AddToListModalProps {
   ingredients: RecipeIngredient[];
@@ -40,11 +59,31 @@ function AddToListModal({ ingredients, lists, onConfirm, onClose }: AddToListMod
   const catalogIngredients = ingredients.filter(i => i.catalogItemId);
   const noCatalogIngredients = ingredients.filter(i => !i.catalogItemId);
 
-  const [checked, setChecked] = useState<Set<string>>(
-    () => new Set(catalogIngredients.map(i => i.id))
-  );
-  const activeLists = lists.filter(l => l.status !== 'complete');
+  const [store, setStore] = useState<Store>('sams');
+
+  function relevantCatalogIds(s: Store): Set<string> {
+    return new Set(
+      catalogIngredients
+        .filter(i => {
+          const item = MASTER_CATALOG.find(c => c.id === i.catalogItemId);
+          return item && (s === 'both' || item.store === s || item.store === 'both');
+        })
+        .map(i => i.id)
+    );
+  }
+
+  const [checked, setChecked] = useState<Set<string>>(() => relevantCatalogIds('sams'));
+
+  const activeLists = lists.filter(l => activeListMatchesStore(l, store));
+
   const [targetListId, setTargetListId] = useState(activeLists[0]?.id ?? '');
+
+  function handleStoreChange(newStore: Store) {
+    setStore(newStore);
+    setChecked(relevantCatalogIds(newStore));
+    const filtered = lists.filter(l => activeListMatchesStore(l, newStore));
+    setTargetListId(filtered[0]?.id ?? '');
+  }
 
   useEffect(() => {
     const hasValidSelection = activeLists.some(list => list.id === targetListId);
@@ -94,6 +133,23 @@ function AddToListModal({ ingredients, lists, onConfirm, onClose }: AddToListMod
         <div className="px-6 pt-6 pb-4 border-b border-brand-border">
           <h2 className="text-lg font-bold text-brand-text">Add Ingredients to Shopping List</h2>
           <p className="text-sm text-brand-muted mt-1">Select which ingredients to add, then choose a list.</p>
+        </div>
+
+        {/* Store selector */}
+        <div className="px-6 pt-4 pb-2">
+          <p className="text-xs font-semibold text-brand-muted uppercase tracking-wide mb-2">Store</p>
+          <div className="flex gap-2">
+            {(['sams', 'ht', 'both'] as Store[]).map(s => (
+              <button
+                key={s}
+                type="button"
+                onClick={() => handleStoreChange(s)}
+               className={getStoreButtonClassName(store, s)}
+              >
+                {storeLabel(s)}
+              </button>
+            ))}
+          </div>
         </div>
 
         {/* Ingredient list */}
@@ -339,6 +395,8 @@ export default function RecipeDetail({ state, updateList }: RecipeDetailProps) {
     navigate('/recipes');
   }
 
+  // NOTE: Merges items client-side via updateList. If the app moves to
+  // server-authoritative lists, this should call add_recipe_to_shopping_list instead.
   async function handleAddToList(selectedIngredientIds: string[], targetListId: string) {
     const targetList = state.lists.find(l => l.id === targetListId);
     if (!targetList) throw new Error('List not found.');
@@ -516,6 +574,13 @@ export default function RecipeDetail({ state, updateList }: RecipeDetailProps) {
           >
             ✏️ Edit
           </Link>
+          <button
+            type="button"
+            onClick={() => setShowAddModal(true)}
+            className="border border-sams text-sams text-sm font-medium px-4 py-2 rounded-lg hover:bg-sams-light transition-colors"
+          >
+            🛒 Add to List
+          </button>
           <button
             type="button"
             onClick={handleMarkMadeToday}
