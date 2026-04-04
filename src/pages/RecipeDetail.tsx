@@ -36,7 +36,8 @@ function activeListMatchesStore(l: ShoppingList, s: Store): boolean {
 
 function storeButtonActiveClass(s: Store): string {
   if (s === 'ht') return 'bg-ht text-white border-ht';
-  return 'bg-sams text-white border-sams'; // 'sams' and 'both' use Sam's colors
+  // 'sams' and 'both' intentionally use Sam's styling as a neutral default
+  return 'bg-sams text-white border-sams';
 }
 
 function getStoreButtonClassName(currentStore: Store, buttonStore: Store): string {
@@ -394,6 +395,8 @@ export default function RecipeDetail({ state, updateList }: RecipeDetailProps) {
     navigate('/recipes');
   }
 
+  // NOTE: Merges items client-side via updateList. If the app moves to
+  // server-authoritative lists, this should call add_recipe_to_shopping_list instead.
   async function handleAddToList(selectedIngredientIds: string[], targetListId: string) {
     const targetList = state.lists.find(l => l.id === targetListId);
     if (!targetList) throw new Error('List not found.');
