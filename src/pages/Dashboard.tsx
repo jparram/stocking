@@ -225,7 +225,7 @@ export default function Dashboard({ state }: DashboardProps) {
               {(() => {
                 const recentlyMade = recipes
                   .filter(r => r.lastMadeDate)
-                  .sort((a, b) => (b.lastMadeDate ?? '').localeCompare(a.lastMadeDate ?? ''))
+                  .sort((a, b) => new Date(b.lastMadeDate!).getTime() - new Date(a.lastMadeDate!).getTime())
                   .slice(0, 3);
                 if (recentlyMade.length === 0) return null;
                 return (
@@ -237,7 +237,7 @@ export default function Dashboard({ state }: DashboardProps) {
                           <Link to={`/recipes/${r.id}`} className="text-brand-text hover:text-sams hover:underline">
                             {r.name}
                           </Link>
-                          <span className="text-brand-muted">{formatDate(r.lastMadeDate!)}</span>
+                          <span className="text-brand-muted">{r.lastMadeDate && formatDate(r.lastMadeDate)}</span>
                         </li>
                       ))}
                     </ul>
