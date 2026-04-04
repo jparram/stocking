@@ -39,6 +39,13 @@ function storeButtonActiveClass(s: Store): string {
   return 'bg-sams text-white border-sams'; // 'sams' and 'both' use Sam's colors
 }
 
+function getStoreButtonClassName(currentStore: Store, buttonStore: Store): string {
+  const base = 'flex-1 text-sm font-medium px-3 py-1.5 rounded-lg border transition-colors';
+  const active = storeButtonActiveClass(buttonStore);
+  const inactive = 'border-brand-border text-brand-muted hover:bg-brand-bg';
+  return `${base} ${currentStore === buttonStore ? active : inactive}`;
+}
+
 // ─── Add to Shopping List Modal ───────────────────────────────────────────────
 interface AddToListModalProps {
   ingredients: RecipeIngredient[];
@@ -64,7 +71,7 @@ function AddToListModal({ ingredients, lists, onConfirm, onClose }: AddToListMod
     );
   }
 
-  const [checked, setChecked] = useState<Set<string>>(() => relevantCatalogIds(store));
+  const [checked, setChecked] = useState<Set<string>>(() => relevantCatalogIds('sams'));
 
   const activeLists = lists.filter(l => activeListMatchesStore(l, store));
 
@@ -136,11 +143,7 @@ function AddToListModal({ ingredients, lists, onConfirm, onClose }: AddToListMod
                 key={s}
                 type="button"
                 onClick={() => handleStoreChange(s)}
-                className={`flex-1 text-sm font-medium px-3 py-1.5 rounded-lg border transition-colors ${
-                  store === s
-                    ? storeButtonActiveClass(s)
-                    : 'border-brand-border text-brand-muted hover:bg-brand-bg'
-                }`}
+               className={getStoreButtonClassName(store, s)}
               >
                 {storeLabel(s)}
               </button>
