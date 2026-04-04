@@ -3,7 +3,7 @@ import { useNavigate, useParams, Link } from 'react-router-dom';
 import { useRecipes } from '../hooks/useRecipes';
 import type { AppState, Recipe, RecipeIngredient, ShoppingList, ShoppingListItem, Store } from '../types';
 import { MASTER_CATALOG } from '../data/masterCatalog';
-import { formatDate, generateId, storeColor, storeLabel } from '../utils';
+import { formatDate, generateId, storeLabel } from '../utils';
 
 // ─── Props ────────────────────────────────────────────────────────────────────
 interface RecipeDetailProps {
@@ -34,6 +34,11 @@ function activeListMatchesStore(l: ShoppingList, s: Store): boolean {
   return l.store === s || l.store === 'both';
 }
 
+function storeButtonActiveClass(s: Store): string {
+  if (s === 'ht') return 'bg-ht text-white border-ht';
+  return 'bg-sams text-white border-sams'; // 'sams' and 'both' use Sam's colors
+}
+
 // ─── Add to Shopping List Modal ───────────────────────────────────────────────
 interface AddToListModalProps {
   ingredients: RecipeIngredient[];
@@ -59,7 +64,7 @@ function AddToListModal({ ingredients, lists, onConfirm, onClose }: AddToListMod
     );
   }
 
-  const [checked, setChecked] = useState<Set<string>>(() => relevantCatalogIds('sams'));
+  const [checked, setChecked] = useState<Set<string>>(() => relevantCatalogIds(store));
 
   const activeLists = lists.filter(l => activeListMatchesStore(l, store));
 
@@ -133,7 +138,7 @@ function AddToListModal({ ingredients, lists, onConfirm, onClose }: AddToListMod
                 onClick={() => handleStoreChange(s)}
                 className={`flex-1 text-sm font-medium px-3 py-1.5 rounded-lg border transition-colors ${
                   store === s
-                    ? `bg-${storeColor(s)} text-white border-${storeColor(s)}`
+                    ? storeButtonActiveClass(s)
                     : 'border-brand-border text-brand-muted hover:bg-brand-bg'
                 }`}
               >
