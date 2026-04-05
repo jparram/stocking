@@ -12,7 +12,9 @@ const NAV_LINKS = [
 
 export default function Navbar() {
   const location = useLocation();
-  const { signOut } = useAuthenticator();
+  const { signOut, user } = useAuthenticator((context) => [context.user]);
+
+  const userEmail = user?.signInDetails?.loginId ?? user?.username ?? '';
 
   return (
     <nav className="bg-white border-b border-brand-border sticky top-0 z-50 shadow-sm">
@@ -45,6 +47,11 @@ export default function Navbar() {
                 </Link>
               );
             })}
+            {userEmail && (
+              <span className="px-3 py-2 text-sm text-brand-muted truncate max-w-[160px]" title={userEmail}>
+                {userEmail}
+              </span>
+            )}
             <button
               onClick={signOut}
               className="px-3 py-2 rounded-md text-sm font-medium text-brand-muted hover:bg-brand-bg hover:text-brand-text transition-colors"
