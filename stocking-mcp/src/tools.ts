@@ -457,7 +457,8 @@ export const TOOL_DEFINITIONS = [
   {
     name: 'create_meal_plan',
     description:
-      'Creates a new meal plan for a given week. '
+      'Creates a new meal plan for a given week. Idempotent — if a plan already exists '
+      + 'for the same week, type, and memberId it is returned instead of creating a duplicate. '
       + 'weekOf is normalized to Monday of that week. '
       + 'Family plans leave memberId unset; individual plans require a memberId.',
     inputSchema: {
@@ -472,12 +473,17 @@ export const TOOL_DEFINITIONS = [
   },
   {
     name: 'get_meal_plan',
-    description: 'Returns a meal plan and all its entries, sorted by dayOfWeek then mealType.',
+    description:
+      'Fetches a meal plan and all its entries, sorted by dayOfWeek then mealType. '
+      + 'Look up by week_of + type (+ member_id for individual plans), or directly by plan_id. '
+      + 'Returns a not_found error when no plan exists for the given week.',
     inputSchema: {
       type: 'object',
-      required: ['plan_id'],
       properties: {
-        plan_id: { type: 'string' },
+        plan_id:   { type: 'string', description: 'Fetch directly by plan ID (takes precedence over week lookup)' },
+        week_of:   { type: 'string', description: 'Any ISO date within the target week — normalized to Monday' },
+        type:      { type: 'string', enum: ['family', 'individual'] },
+        member_id: { type: 'string', description: 'Required when type is individual' },
       },
     },
   },
@@ -530,6 +536,25 @@ export const TOOL_DEFINITIONS = [
       properties: {
         plan_id:     { type: 'string' },
         entry_id:    { type: 'string', description: 'Provide to update an existing entry; omit to create' },
+        day_of_week: { type: 'string', enum: ['sun', 'mon', 'tue', 'wed', 'thu', 'fri', 'sat'] },
+        meal_type:   { type: 'string', enum: ['breakfast', 'lunch', 'dinner'] },
+        recipe_id:   { type: 'string', description: 'ID of a Recipe record (preferred)' },
+        label:       { type: 'string', description: 'Free-text meal name when no recipe exists' },
+        notes:       { type: 'string' },
+      },
+    },
+  },
+  {
+    name: 'update_meal_entry',
+    description:
+      'Sets or updates a single day/mealType slot in a meal plan. '
+      + 'Looks up an existing entry for the given plan + day + meal; updates it if found, creates it if not. '
+      + 'Supply either a recipe_id (links to a Recipe record) or a label (free-text description).',
+    inputSchema: {
+      type: 'object',
+      required: ['plan_id', 'day_of_week', 'meal_type'],
+      properties: {
+        plan_id:     { type: 'string' },
         day_of_week: { type: 'string', enum: ['sun', 'mon', 'tue', 'wed', 'thu', 'fri', 'sat'] },
         meal_type:   { type: 'string', enum: ['breakfast', 'lunch', 'dinner'] },
         recipe_id:   { type: 'string', description: 'ID of a Recipe record (preferred)' },
@@ -995,6 +1020,22 @@ async function dispatch(
       }
 
       const weekOf = toMonday(args['week_of'] as string);
+
+      // Idempotency: return existing plan if one already exists for this week/type/member
+      const existing = await gql.listMealPlans(1, weekOf, type, memberId);
+      if (existing.length > 0) {
+        const existingPlan = existing[0] as Record<string, unknown>;
+        return {
+          success: true,
+          plan_id: existingPlan['id'],
+          week_of: weekOf,
+          type,
+          member_id: memberId ?? null,
+          already_existed: true,
+          message: 'Meal plan already exists for this week — returning existing plan.',
+        };
+      }
+
       const plan = await gql.createMealPlan({
         weekOf,
         type,
@@ -1006,12 +1047,38 @@ async function dispatch(
         week_of: weekOf,
         type,
         member_id: memberId ?? null,
+        already_existed: false,
         message: 'Meal plan created.',
       };
     }
 
-    case 'get_meal_plan':
-      return gql.getMealPlan(args['plan_id'] as string);
+    case 'get_meal_plan': {
+      const planId  = args['plan_id'] as string | undefined;
+      if (planId) {
+        return gql.getMealPlan(planId);
+      }
+      // Look up by week_of + type + member_id
+      const type     = args['type'] as string | undefined;
+      const memberId = args['member_id'] as string | undefined;
+      const weekOf   = args['week_of']
+        ? toMonday(args['week_of'] as string)
+        : undefined;
+      if (!weekOf || !type) {
+        throw new Error('get_meal_plan requires either plan_id or both week_of and type');
+      }
+      const plans = await gql.listMealPlans(1, weekOf, type, memberId);
+      if (plans.length === 0) {
+        return {
+          error: 'not_found',
+          week_of: weekOf,
+          type,
+          member_id: memberId ?? null,
+          message: `No ${type} meal plan found for week of ${weekOf}${memberId ? ` (member: ${memberId})` : ''}.`,
+        };
+      }
+      const found = plans[0] as Record<string, unknown>;
+      return gql.getMealPlan(found['id'] as string);
+    }
 
     case 'list_meal_plans': {
       const weekOf = args['week_of']
@@ -1116,6 +1183,45 @@ async function dispatch(
         deleted_entry_id: result.id,
         plan_id: args['plan_id'] as string | undefined,
       };
+    }
+
+    case 'update_meal_entry': {
+      // Slot-based upsert: find existing entry by plan + day + mealType, update or create.
+      const planId    = args['plan_id']     as string;
+      const dayOfWeek = args['day_of_week'] as 'sun' | 'mon' | 'tue' | 'wed' | 'thu' | 'fri' | 'sat';
+      const mealType  = args['meal_type']   as 'breakfast' | 'lunch' | 'dinner';
+      const recipeId  = args['recipe_id']   as string | null | undefined;
+      const label     = args['label']       as string | null | undefined;
+      const notes     = args['notes']       as string | null | undefined;
+
+      if (!recipeId && !label) {
+        throw new Error('update_meal_entry requires at least one of recipe_id or label');
+      }
+
+      // Fetch current entries to find an existing slot match
+      const planData = await gql.getMealPlan(planId) as {
+        entries?: Array<Record<string, unknown>>;
+      } | null;
+
+      if (!planData) {
+        throw new Error(`Meal plan not found: ${planId}`);
+      }
+
+      const entries: Array<Record<string, unknown>> = planData.entries ?? [];
+      const existing = entries.find(
+        (e) => e['dayOfWeek'] === dayOfWeek && e['mealType'] === mealType
+      );
+
+      const entryInput = { dayOfWeek, mealType, recipeId, label, notes };
+
+      if (existing) {
+        const entryId = existing['id'] as string;
+        const updated = await gql.updateMealEntry(entryId, entryInput);
+        return { success: true, entry_id: entryId, plan_id: planId, action: 'updated', entry: updated };
+      } else {
+        const created = await gql.createMealEntry(planId, entryInput);
+        return { success: true, entry_id: created.id, plan_id: planId, action: 'created' };
+      }
     }
 
     default:
