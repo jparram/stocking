@@ -123,7 +123,7 @@ export interface MealCalendarEntry {
   id: string;
   weekOf: string;       // Monday ISO date, e.g. '2026-04-06'
   planType: PlanType;
-  memberId?: string;    // undefined / null for family entries
+  memberId?: string | null; // undefined / null for family entries
   dayOfWeek: DayOfWeek;
   mealType: MealType;
   recipeId?: string;
