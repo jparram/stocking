@@ -42,13 +42,12 @@ function formatWeekRange(weekOf: string): string {
 
 /** Get the date for a specific day column */
 function dayDate(weekOf: string, dayIdx: number): Date {
-  // weekOf is Monday (index 1), DAYS[0] is Sunday
+  // weekOf is Monday. Keep the existing Sun-first column order, but map
+  // Sunday to the end of the same Monday-based week instead of the previous week.
   const mon = new Date(weekOf + 'T12:00:00');
-  // Sunday of the same week = Monday - 1
-  const sun = new Date(mon);
-  sun.setDate(sun.getDate() - 1);
-  const d = new Date(sun);
-  d.setDate(d.getDate() + dayIdx);
+  const d = new Date(mon);
+  const offset = dayIdx === 0 ? 6 : dayIdx - 1;
+  d.setDate(d.getDate() + offset);
   return d;
 }
 
