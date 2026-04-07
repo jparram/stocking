@@ -539,7 +539,7 @@ export default function MealPlan() {
     : undefined;
 
   // Family accent colour
-  const familyColor = '#00843D'; // ht green
+  const FAMILY_ACCENT_COLOR = '#00843D'; // ht green
 
   return (
     <div className="space-y-4">
@@ -604,7 +604,7 @@ export default function MealPlan() {
                   : 'bg-white border border-brand-border text-brand-muted hover:text-brand-text'
               }`}
               style={isActive
-                ? { backgroundColor: color ?? (tab.id === 'family' ? familyColor : '#004990') }
+                ? { backgroundColor: color ?? (tab.id === 'family' ? FAMILY_ACCENT_COLOR : '#004990') }
                 : undefined
               }
             >
@@ -652,7 +652,7 @@ export default function MealPlan() {
               <div className="grid grid-cols-[120px_repeat(7,1fr)] gap-1 mb-1">
                 <div
                   className="flex items-center px-2 py-1 rounded-lg text-xs font-bold uppercase tracking-wide"
-                  style={{ color: familyColor }}
+                  style={{ color: FAMILY_ACCENT_COLOR }}
                 >
                   🏠 Family
                 </div>
@@ -676,7 +676,7 @@ export default function MealPlan() {
                       <MealCell
                         key={day.key}
                         entry={entry}
-                        accentColor={familyColor}
+                        accentColor={FAMILY_ACCENT_COLOR}
                         onClick={() => openEditModal(day.key, idx, row.key, 'family')}
                       />
                     );

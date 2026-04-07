@@ -116,7 +116,7 @@ export interface MealEntry {
 export interface MealPlanMember {
   id: string;
   name: string;
-  color: string; // hex colour, e.g. '#3B82F6'
+  color: string; // hex color, e.g. '#3B82F6'
 }
 
 export interface MealCalendarEntry {
