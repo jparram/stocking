@@ -28,15 +28,21 @@ export function useMealCalendar() {
 
   const addMember = useCallback(
     (name: string) => {
-      const member: MealPlanMember = {
-        id: generateId(),
-        name: name.trim(),
-        color: nextMemberColor(members),
-      };
-      setMembers(prev => [...prev, member]);
+      const trimmedName = name.trim();
+      let member!: MealPlanMember;
+
+      setMembers(prev => {
+        member = {
+          id: generateId(),
+          name: trimmedName,
+          color: nextMemberColor(prev),
+        };
+        return [...prev, member];
+      });
+
       return member;
     },
-    [members, setMembers]
+    [setMembers]
   );
 
   const renameMember = useCallback(
