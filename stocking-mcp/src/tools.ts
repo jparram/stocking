@@ -40,6 +40,9 @@ function namesMatch(listName: string, instacartName: string): boolean {
 /** Normalize any ISO date string to the Monday of that week (UTC). */
 function toMonday(dateStr: string): string {
   const d = new Date(dateStr);
+  if (isNaN(d.getTime())) {
+    throw new Error(`Invalid date string for week_of: "${dateStr}"`);
+  }
   const day = d.getUTCDay(); // 0=Sun, 1=Mon, …, 6=Sat
   const diff = day === 0 ? -6 : 1 - day;
   d.setUTCDate(d.getUTCDate() + diff);

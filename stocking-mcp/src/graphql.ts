@@ -663,15 +663,17 @@ export class GraphQLClient {
     const entryIds: string[] = [];
     let nextToken: string | null | undefined = undefined;
 
+    type PlanPageResult = {
+      getMealPlan: {
+        entries: {
+          items: Array<{ id: string }>;
+          nextToken?: string | null;
+        };
+      } | null;
+    };
+
     do {
-      const planData = await this.query<{
-        getMealPlan: {
-          entries: {
-            items: Array<{ id: string }>;
-            nextToken?: string | null;
-          };
-        } | null;
-      }>(
+      const planData: PlanPageResult = await this.query<PlanPageResult>(
         `query GetMealPlanEntryIds($id: ID!, $nextToken: String) {
           getMealPlan(id: $id) {
             entries(nextToken: $nextToken) {
@@ -686,7 +688,7 @@ export class GraphQLClient {
       const entries = planData.getMealPlan?.entries;
       if (!entries) break;
 
-      entryIds.push(...entries.items.map((e) => e.id));
+      entryIds.push(...entries.items.map((e: { id: string }) => e.id));
       nextToken = entries.nextToken;
     } while (nextToken);
     // 2. Delete entries with limited concurrency to reduce latency without
