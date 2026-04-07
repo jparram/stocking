@@ -449,14 +449,9 @@ function ManageMembersModal({ members, onAdd, onRename, onRemove, onClose }: Man
 
 type TabFilter = 'all' | 'family' | string; // string = memberId
 
-interface EditTarget {
-  dayOfWeek: DayOfWeek;
-  dayLabel: string;
-  mealType: MealType;
-  planType: 'family' | 'individual';
-  memberId?: string;
-  memberName?: string;
-}
+type EditTarget =
+  | { planType: 'family'; dayOfWeek: DayOfWeek; dayLabel: string; mealType: MealType; memberId?: never; memberName?: never }
+  | { planType: 'individual'; dayOfWeek: DayOfWeek; dayLabel: string; mealType: MealType; memberId: string; memberName?: string };
 
 export default function MealPlan() {
   const [weekOf, setWeekOf] = useState(getMondayOf());
@@ -503,45 +498,38 @@ export default function MealPlan() {
   ) => {
     const d = dayDate(weekOf, dayIdx);
     const dayLabel = d.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
-    const member = members.find(m => m.id === memberId);
-    setEditTarget({
-      dayOfWeek,
-      dayLabel,
-      mealType,
-      planType,
-      memberId,
-      memberName: member?.name,
-    });
+    if (planType === 'family') {
+      setEditTarget({ planType: 'family', dayOfWeek, dayLabel, mealType });
+    } else if (memberId) {
+      const member = members.find(m => m.id === memberId);
+      setEditTarget({ planType: 'individual', dayOfWeek, dayLabel, mealType, memberId, memberName: member?.name });
+    }
   };
 
   const handleSave = (data: { recipeId?: string; recipeName?: string; label?: string; notes?: string }) => {
     if (!editTarget) return;
-    upsertEntry(
-      weekOf,
-      editTarget.planType,
-      editTarget.dayOfWeek,
-      editTarget.mealType,
-      data,
-      editTarget.memberId
-    );
+    if (editTarget.planType === 'family') {
+      upsertEntry(weekOf, 'family', editTarget.dayOfWeek, editTarget.mealType, data);
+    } else {
+      upsertEntry(weekOf, 'individual', editTarget.dayOfWeek, editTarget.mealType, data, editTarget.memberId);
+    }
     setEditTarget(null);
   };
 
   const handleDelete = () => {
     if (!editTarget) return;
-    const entry = getEntry(
-      weekOf,
-      editTarget.planType,
-      editTarget.dayOfWeek,
-      editTarget.mealType,
-      editTarget.memberId
-    );
+    const entry =
+      editTarget.planType === 'family'
+        ? getEntry(weekOf, 'family', editTarget.dayOfWeek, editTarget.mealType)
+        : getEntry(weekOf, 'individual', editTarget.dayOfWeek, editTarget.mealType, editTarget.memberId);
     if (entry) deleteEntry(entry.id);
     setEditTarget(null);
   };
 
   const editingEntry = editTarget
-    ? getEntry(weekOf, editTarget.planType, editTarget.dayOfWeek, editTarget.mealType, editTarget.memberId)
+    ? editTarget.planType === 'family'
+      ? getEntry(weekOf, 'family', editTarget.dayOfWeek, editTarget.mealType)
+      : getEntry(weekOf, 'individual', editTarget.dayOfWeek, editTarget.mealType, editTarget.memberId)
     : undefined;
 
   // Family accent colour

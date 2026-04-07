@@ -1,7 +1,20 @@
 import { useCallback } from 'react';
 import { useLocalStorage } from './useLocalStorage';
-import type { DayOfWeek, MealType, PlanType, MealCalendarEntry, MealPlanMember } from '../types';
+import type { DayOfWeek, MealType, MealCalendarEntry, MealPlanMember } from '../types';
 import { generateId } from '../utils';
+
+type EntryData = { recipeId?: string; recipeName?: string; label?: string; notes?: string };
+
+/** Overloaded type: family entries never take memberId; individual entries require it. */
+type GetEntryFn = {
+  (weekOf: string, planType: 'family', dayOfWeek: DayOfWeek, mealType: MealType): MealCalendarEntry | undefined;
+  (weekOf: string, planType: 'individual', dayOfWeek: DayOfWeek, mealType: MealType, memberId: string): MealCalendarEntry | undefined;
+};
+
+type UpsertEntryFn = {
+  (weekOf: string, planType: 'family', dayOfWeek: DayOfWeek, mealType: MealType, data: EntryData): void;
+  (weekOf: string, planType: 'individual', dayOfWeek: DayOfWeek, mealType: MealType, data: EntryData, memberId: string): void;
+};
 
 // Predefined distinct member colours
 const MEMBER_COLORS = [
@@ -66,7 +79,7 @@ export function useMealCalendar() {
   const getEntry = useCallback(
     (
       weekOf: string,
-      planType: PlanType,
+      planType: 'family' | 'individual',
       dayOfWeek: DayOfWeek,
       mealType: MealType,
       memberId?: string
@@ -81,15 +94,15 @@ export function useMealCalendar() {
       );
     },
     [entries]
-  );
+  ) as GetEntryFn;
 
   const upsertEntry = useCallback(
     (
       weekOf: string,
-      planType: PlanType,
+      planType: 'family' | 'individual',
       dayOfWeek: DayOfWeek,
       mealType: MealType,
-      data: { recipeId?: string; recipeName?: string; label?: string; notes?: string },
+      data: EntryData,
       memberId?: string
     ) => {
       if (planType === 'individual' && !memberId) {
@@ -122,7 +135,7 @@ export function useMealCalendar() {
       });
     },
     [setEntries]
-  );
+  ) as UpsertEntryFn;
 
   const deleteEntry = useCallback(
     (id: string) => {
