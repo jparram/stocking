@@ -612,24 +612,28 @@ export class GraphQLClient {
     type?: string,
     memberId?: string
   ): Promise<unknown[]> {
+    const filter: Record<string, { eq: string }> = {};
+    if (weekOf) filter['weekOf'] = { eq: weekOf };
+    if (type) filter['type'] = { eq: type };
+    if (memberId) filter['memberId'] = { eq: memberId };
+
     const data = await this.query<{
       listMealPlans: { items: Array<Record<string, unknown>> };
     }>(
-      `query ListMealPlans($limit: Int) {
-        listMealPlans(limit: $limit) {
+      `query ListMealPlans($limit: Int, $filter: ModelMealPlanFilterInput) {
+        listMealPlans(limit: $limit, filter: $filter) {
           items {
             id weekOf type memberId createdAt updatedAt
           }
         }
       }`,
-      { limit }
+      {
+        limit,
+        filter: Object.keys(filter).length > 0 ? filter : null,
+      }
     );
 
-    let plans = data.listMealPlans.items;
-    if (weekOf)   plans = plans.filter((p) => p['weekOf'] === weekOf);
-    if (type)     plans = plans.filter((p) => p['type'] === type);
-    if (memberId) plans = plans.filter((p) => p['memberId'] === memberId);
-    return plans.slice(0, limit);
+    return data.listMealPlans.items;
   }
 
   // ── UPDATE MEAL PLAN ──────────────────────────────────────────────────────
