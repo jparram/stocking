@@ -52,6 +52,40 @@ export interface ReconcileItemUpdate {
   notes?: string;
 }
 
+export interface MealPlanInput {
+  weekOf: string;
+  type: 'family' | 'individual';
+  memberId?: string | null;
+}
+
+export interface MealEntryInput {
+  dayOfWeek: 'sun' | 'mon' | 'tue' | 'wed' | 'thu' | 'fri' | 'sat';
+  mealType: 'breakfast' | 'lunch' | 'dinner';
+  recipeId?: string | null;
+  label?: string | null;
+  notes?: string | null;
+}
+
+// ── Meal entry sort helpers ───────────────────────────────────────────────────
+
+const DAY_ORDER = ['sun', 'mon', 'tue', 'wed', 'thu', 'fri', 'sat'];
+const MEAL_ORDER = ['breakfast', 'lunch', 'dinner'];
+
+function sortMealEntries(
+  entries: Array<Record<string, unknown>>
+): Array<Record<string, unknown>> {
+  return [...entries].sort((a, b) => {
+    const dayDiff =
+      DAY_ORDER.indexOf(a['dayOfWeek'] as string) -
+      DAY_ORDER.indexOf(b['dayOfWeek'] as string);
+    if (dayDiff !== 0) return dayDiff;
+    return (
+      MEAL_ORDER.indexOf(a['mealType'] as string) -
+      MEAL_ORDER.indexOf(b['mealType'] as string)
+    );
+  });
+}
+
 export class GraphQLClient {
   constructor(
     private endpoint: string,
@@ -525,5 +559,242 @@ export class GraphQLClient {
     await this.completeList(listId, actualSpend);
     return { list_id: listId, actual_spend: actualSpend, items_updated: itemUpdates.length };
 
+  }
+
+  // ── CREATE MEAL PLAN ──────────────────────────────────────────────────────
+  async createMealPlan(input: MealPlanInput): Promise<{ id: string }> {
+    const planInput: Record<string, unknown> = {
+      weekOf: input.weekOf,
+      type:   input.type,
+    };
+    if (input.memberId !== undefined) planInput['memberId'] = input.memberId ?? null;
+
+    const data = await this.query<{ createMealPlan: { id: string } }>(
+      `mutation CreateMealPlan($input: CreateMealPlanInput!) {
+        createMealPlan(input: $input) { id }
+      }`,
+      { input: planInput }
+    );
+    return { id: data.createMealPlan.id };
+  }
+
+  // ── GET MEAL PLAN (with sorted entries) ───────────────────────────────────
+  async getMealPlan(planId: string): Promise<unknown> {
+    const data = await this.query<{
+      getMealPlan: Record<string, unknown> & {
+        entries: { items: Array<Record<string, unknown>> };
+      };
+    }>(
+      `query GetMealPlan($id: ID!) {
+        getMealPlan(id: $id) {
+          id weekOf type memberId createdAt updatedAt
+          entries {
+            items {
+              id planId dayOfWeek mealType recipeId label notes createdAt updatedAt
+            }
+          }
+        }
+      }`,
+      { id: planId }
+    );
+
+    const plan = data.getMealPlan;
+    return {
+      ...plan,
+      entries: sortMealEntries(plan.entries.items),
+    };
+  }
+
+  // ── LIST MEAL PLANS ───────────────────────────────────────────────────────
+  async listMealPlans(
+    limit = 20,
+    weekOf?: string,
+    type?: string,
+    memberId?: string
+  ): Promise<unknown[]> {
+    const filter: Record<string, { eq: string }> = {};
+    if (weekOf) filter['weekOf'] = { eq: weekOf };
+    if (type) filter['type'] = { eq: type };
+    if (memberId) filter['memberId'] = { eq: memberId };
+
+    const data = await this.query<{
+      listMealPlans: { items: Array<Record<string, unknown>> };
+    }>(
+      `query ListMealPlans($limit: Int, $filter: ModelMealPlanFilterInput) {
+        listMealPlans(limit: $limit, filter: $filter) {
+          items {
+            id weekOf type memberId createdAt updatedAt
+          }
+        }
+      }`,
+      {
+        limit,
+        filter: Object.keys(filter).length > 0 ? filter : null,
+      }
+    );
+
+    return data.listMealPlans.items;
+  }
+
+  // ── UPDATE MEAL PLAN ──────────────────────────────────────────────────────
+  async updateMealPlan(
+    planId: string,
+    updates: Partial<MealPlanInput>
+  ): Promise<unknown> {
+    const input: Record<string, unknown> = { id: planId };
+    if (updates.weekOf   !== undefined) input['weekOf']   = updates.weekOf;
+    if (updates.type     !== undefined) input['type']     = updates.type;
+    if (updates.memberId !== undefined) input['memberId'] = updates.memberId ?? null;
+
+    const data = await this.query<{ updateMealPlan: unknown }>(
+      `mutation UpdateMealPlan($input: UpdateMealPlanInput!) {
+        updateMealPlan(input: $input) {
+          id weekOf type memberId updatedAt
+        }
+      }`,
+      { input }
+    );
+    return data.updateMealPlan;
+  }
+
+  // ── DELETE MEAL PLAN (cascades entries manually) ──────────────────────────
+  async deleteMealPlan(planId: string): Promise<{ deletedEntryCount: number }> {
+    // 1. Fetch all entry IDs across all pages (AppSync does not cascade deletes)
+    const entryIds: string[] = [];
+    let nextToken: string | null | undefined = undefined;
+
+    type PlanPageResult = {
+      getMealPlan: {
+        entries: {
+          items: Array<{ id: string }>;
+          nextToken?: string | null;
+        };
+      } | null;
+    };
+
+    do {
+      const planData: PlanPageResult = await this.query<PlanPageResult>(
+        `query GetMealPlanEntryIds($id: ID!, $nextToken: String) {
+          getMealPlan(id: $id) {
+            entries(nextToken: $nextToken) {
+              items { id }
+              nextToken
+            }
+          }
+        }`,
+        { id: planId, nextToken }
+      );
+
+      const entries = planData.getMealPlan?.entries;
+      if (!entries) break;
+
+      entryIds.push(...entries.items.map((e: { id: string }) => e.id));
+      nextToken = entries.nextToken;
+    } while (nextToken);
+    // 2. Delete entries with limited concurrency to reduce latency without
+    // overwhelming AppSync, while tracking any failures.
+    const failedEntryIds: string[] = [];
+    const concurrency = Math.min(5, Math.max(entryIds.length, 1));
+    let nextIndex = 0;
+
+    const deleteNextEntry = async (): Promise<void> => {
+      while (true) {
+        const currentIndex = nextIndex++;
+        if (currentIndex >= entryIds.length) {
+          return;
+        }
+
+        const entryId = entryIds[currentIndex];
+        try {
+          await this.query(
+            `mutation DeleteMealEntry($input: DeleteMealEntryInput!) {
+              deleteMealEntry(input: $input) { id }
+            }`,
+            { input: { id: entryId } }
+          );
+        } catch {
+          failedEntryIds.push(entryId);
+        }
+      }
+    };
+
+    await Promise.all(
+      Array.from({ length: concurrency }, async () => {
+        await deleteNextEntry();
+      })
+    );
+
+    if (failedEntryIds.length > 0) {
+      throw new Error(
+        `Failed to delete meal plan entries for plan ${planId}: ${failedEntryIds.join(', ')}`
+      );
+    }
+
+    // 3. Delete the plan
+    await this.query(
+      `mutation DeleteMealPlan($input: DeleteMealPlanInput!) {
+        deleteMealPlan(input: $input) { id }
+      }`,
+      { input: { id: planId } }
+    );
+
+    return { deletedEntryCount: entryIds.length };
+  }
+
+  // ── CREATE MEAL ENTRY ─────────────────────────────────────────────────────
+  async createMealEntry(
+    planId: string,
+    input: MealEntryInput
+  ): Promise<{ id: string }> {
+    const entryInput: Record<string, unknown> = {
+      planId,
+      dayOfWeek: input.dayOfWeek,
+      mealType:  input.mealType,
+    };
+    if (input.recipeId !== undefined) entryInput['recipeId'] = input.recipeId ?? null;
+    if (input.label    !== undefined) entryInput['label']    = input.label    ?? null;
+    if (input.notes    !== undefined) entryInput['notes']    = input.notes    ?? null;
+
+    const data = await this.query<{ createMealEntry: { id: string } }>(
+      `mutation CreateMealEntry($input: CreateMealEntryInput!) {
+        createMealEntry(input: $input) { id }
+      }`,
+      { input: entryInput }
+    );
+    return { id: data.createMealEntry.id };
+  }
+
+  // ── UPDATE MEAL ENTRY ─────────────────────────────────────────────────────
+  async updateMealEntry(
+    entryId: string,
+    updates: Partial<MealEntryInput>
+  ): Promise<unknown> {
+    const input: Record<string, unknown> = { id: entryId };
+    if (updates.dayOfWeek !== undefined) input['dayOfWeek'] = updates.dayOfWeek;
+    if (updates.mealType  !== undefined) input['mealType']  = updates.mealType;
+    if (updates.recipeId  !== undefined) input['recipeId']  = updates.recipeId  ?? null;
+    if (updates.label     !== undefined) input['label']     = updates.label     ?? null;
+    if (updates.notes     !== undefined) input['notes']     = updates.notes     ?? null;
+
+    const data = await this.query<{ updateMealEntry: unknown }>(
+      `mutation UpdateMealEntry($input: UpdateMealEntryInput!) {
+        updateMealEntry(input: $input) {
+          id planId dayOfWeek mealType recipeId label notes updatedAt
+        }
+      }`,
+      { input }
+    );
+    return data.updateMealEntry;
+  }
+
+  // ── DELETE MEAL ENTRY ─────────────────────────────────────────────────────
+  async deleteMealEntry(entryId: string): Promise<{ id: string }> {
+    const data = await this.query<{ deleteMealEntry: { id: string } }>(
+      `mutation DeleteMealEntry($input: DeleteMealEntryInput!) {
+        deleteMealEntry(input: $input) { id }
+      }`,
+      { input: { id: entryId } }
+    );
+    return data.deleteMealEntry;
   }
 }
