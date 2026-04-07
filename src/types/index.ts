@@ -113,6 +113,25 @@ export interface MealEntry {
   updatedAt: string;
 }
 
+export interface MealPlanMember {
+  id: string;
+  name: string;
+  color: string; // hex color, e.g. '#3B82F6'
+}
+
+export interface MealCalendarEntry {
+  id: string;
+  weekOf: string;       // Monday ISO date, e.g. '2026-04-06'
+  planType: PlanType;
+  memberId?: string | null; // undefined / null for family entries
+  dayOfWeek: DayOfWeek;
+  mealType: MealType;
+  recipeId?: string;
+  recipeName?: string;  // cached display name
+  label?: string;       // free-text fallback
+  notes?: string;
+}
+
 export interface AppState {
   lists: ShoppingList[];
   weeklyLogs: WeeklyLog[];

@@ -10,6 +10,7 @@ import Settings from './pages/Settings';
 import RecipeList from './pages/RecipeList';
 import RecipeForm from './pages/RecipeForm';
 import RecipeDetail from './pages/RecipeDetail';
+import MealPlan from './pages/MealPlan';
 import { useAppState } from './hooks/useAppState';
 
 export default function App() {
@@ -41,10 +42,8 @@ export default function App() {
           <Route path="/recipes" element={<RecipeList />} />
           <Route path="/recipes/new" element={<RecipeForm />} />
           <Route path="/recipes/:id/edit" element={<RecipeForm />} />
-          <Route
-            path="/recipes/:id"
-            element={<RecipeDetail state={state} updateList={updateList} />}
-          />
+          <Route path="/recipes/:id" element={<RecipeDetail state={state} updateList={updateList} />} />
+          <Route path="/meal-plan" element={<MealPlan />} />
           <Route
             path="*"
             element={
