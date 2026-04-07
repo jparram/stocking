@@ -77,18 +77,23 @@ interface CellProps {
 }
 
 function MealCell({ entry, accentColor, onClick }: CellProps) {
-  const displayText = entry?.recipeName ?? entry?.label;
+  const recipeName = entry?.recipeName?.trim();
+  const label = entry?.label?.trim();
+  const notes = entry?.notes?.trim();
+  const displayText = recipeName || label || (notes ? `Note: ${notes}` : '');
+  const hasContent = Boolean(displayText);
+
   return (
     <button
       onClick={onClick}
       className={`w-full min-h-[52px] rounded-lg border text-left px-2 py-1.5 text-xs transition-colors group ${
-        displayText
+        hasContent
           ? 'border-transparent hover:border-gray-300'
           : 'border-dashed border-brand-border hover:border-gray-400 hover:bg-brand-bg'
       }`}
-      style={displayText ? { backgroundColor: accentColor + '18', borderColor: accentColor + '40' } : undefined}
+      style={hasContent ? { backgroundColor: accentColor + '18', borderColor: accentColor + '40' } : undefined}
     >
-      {displayText ? (
+      {hasContent ? (
         <span className="font-medium leading-snug line-clamp-2" style={{ color: accentColor }}>
           {displayText}
         </span>
