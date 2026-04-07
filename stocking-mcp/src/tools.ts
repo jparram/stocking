@@ -1072,11 +1072,28 @@ async function dispatch(
     case 'upsert_meal_entry': {
       const planId  = args['plan_id']     as string;
       const entryId = args['entry_id']    as string | undefined;
+      const recipeId = args['recipe_id']   as string | null | undefined;
+      const label    = args['label']       as string | null | undefined;
+
+      // Require at least one of recipe_id or label on create.
+      // On update, reject only if the caller is explicitly clearing both.
+      if (!entryId) {
+        if (!recipeId && !label) {
+          throw new Error('upsert_meal_entry requires at least one of recipe_id or label');
+        }
+      } else {
+        const clearingRecipeId = args['recipe_id'] !== undefined && !recipeId;
+        const clearingLabel    = args['label']     !== undefined && !label;
+        if (clearingRecipeId && clearingLabel) {
+          throw new Error('upsert_meal_entry: cannot clear both recipe_id and label — at least one must remain set');
+        }
+      }
+
       const entryInput = {
         dayOfWeek: args['day_of_week'] as 'sun' | 'mon' | 'tue' | 'wed' | 'thu' | 'fri' | 'sat',
         mealType:  args['meal_type']   as 'breakfast' | 'lunch' | 'dinner',
-        recipeId:  args['recipe_id']   as string | null | undefined,
-        label:     args['label']       as string | null | undefined,
+        recipeId,
+        label,
         notes:     args['notes']       as string | null | undefined,
       };
       if (entryId) {
