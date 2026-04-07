@@ -6,6 +6,7 @@ const NAV_LINKS = [
   { to: '/stocking-guide', label: 'Guide', icon: '📋' },
   { to: '/list/new', label: 'New List', icon: '➕' },
   { to: '/recipes', label: 'Recipes', icon: '🍳' },
+  { to: '/meal-plan', label: 'Meal Plan', icon: '🗓️' },
   { to: '/history', label: 'History', icon: '📊' },
   { to: '/settings', label: 'Settings', icon: '⚙️' },
 ];
