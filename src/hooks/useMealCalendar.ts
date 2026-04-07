@@ -92,6 +92,9 @@ export function useMealCalendar() {
       data: { recipeId?: string; recipeName?: string; label?: string; notes?: string },
       memberId?: string
     ) => {
+      if (planType === 'individual' && !memberId) {
+        throw new Error('memberId is required for individual meal plan entries');
+      }
       setEntries(prev => {
         const idx = prev.findIndex(
           e =>

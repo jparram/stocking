@@ -73,10 +73,11 @@ function isToday(weekOf: string, dayIdx: number): boolean {
 interface CellProps {
   entry?: MealCalendarEntry;
   accentColor: string;
+  ariaLabel: string;
   onClick: () => void;
 }
 
-function MealCell({ entry, accentColor, onClick }: CellProps) {
+function MealCell({ entry, accentColor, ariaLabel, onClick }: CellProps) {
   const recipeName = entry?.recipeName?.trim();
   const label = entry?.label?.trim();
   const notes = entry?.notes?.trim();
@@ -86,6 +87,7 @@ function MealCell({ entry, accentColor, onClick }: CellProps) {
   return (
     <button
       onClick={onClick}
+      aria-label={hasContent ? `Edit: ${displayText} — ${ariaLabel}` : `Add ${ariaLabel}`}
       className={`w-full min-h-[52px] rounded-lg border text-left px-2 py-1.5 text-xs transition-colors group ${
         hasContent
           ? 'border-transparent hover:border-gray-300'
@@ -681,6 +683,7 @@ export default function MealPlan() {
                         key={day.key}
                         entry={entry}
                         accentColor={FAMILY_ACCENT_COLOR}
+                        ariaLabel={`Family ${row.label} — ${day.label} ${formatDayHeader(weekOf, idx)}`}
                         onClick={() => openEditModal(day.key, idx, row.key, 'family')}
                       />
                     );
@@ -728,6 +731,7 @@ export default function MealPlan() {
                       key={day.key}
                       entry={entry}
                       accentColor={member.color}
+                      ariaLabel={`${member.name} Dinner — ${day.label} ${formatDayHeader(weekOf, idx)}`}
                       onClick={() => openEditModal(day.key, idx, 'dinner', 'individual', member.id)}
                     />
                   );
