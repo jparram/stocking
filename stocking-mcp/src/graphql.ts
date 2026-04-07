@@ -689,13 +689,42 @@ export class GraphQLClient {
       entryIds.push(...entries.items.map((e) => e.id));
       nextToken = entries.nextToken;
     } while (nextToken);
-    // 2. Delete each entry
-    for (const entryId of entryIds) {
-      await this.query(
-        `mutation DeleteMealEntry($input: DeleteMealEntryInput!) {
-          deleteMealEntry(input: $input) { id }
-        }`,
-        { input: { id: entryId } }
+    // 2. Delete entries with limited concurrency to reduce latency without
+    // overwhelming AppSync, while tracking any failures.
+    const failedEntryIds: string[] = [];
+    const concurrency = Math.min(5, Math.max(entryIds.length, 1));
+    let nextIndex = 0;
+
+    const deleteNextEntry = async (): Promise<void> => {
+      while (true) {
+        const currentIndex = nextIndex++;
+        if (currentIndex >= entryIds.length) {
+          return;
+        }
+
+        const entryId = entryIds[currentIndex];
+        try {
+          await this.query(
+            `mutation DeleteMealEntry($input: DeleteMealEntryInput!) {
+              deleteMealEntry(input: $input) { id }
+            }`,
+            { input: { id: entryId } }
+          );
+        } catch {
+          failedEntryIds.push(entryId);
+        }
+      }
+    };
+
+    await Promise.all(
+      Array.from({ length: concurrency }, async () => {
+        await deleteNextEntry();
+      })
+    );
+
+    if (failedEntryIds.length > 0) {
+      throw new Error(
+        `Failed to delete meal plan entries for plan ${planId}: ${failedEntryIds.join(', ')}`
       );
     }
 
