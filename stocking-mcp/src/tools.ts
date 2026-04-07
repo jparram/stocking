@@ -501,7 +501,7 @@ export const TOOL_DEFINITIONS = [
         plan_id:   { type: 'string' },
         week_of:   { type: 'string', description: 'ISO date — normalized to Monday' },
         type:      { type: 'string', enum: ['family', 'individual'] },
-        member_id: { type: 'string', description: 'Set to null to remove member association (converts to family plan)' },
+        member_id: { type: ['string', 'null'], description: 'Set to null to remove member association (converts to family plan)' },
       },
     },
   },
