@@ -659,20 +659,36 @@ export class GraphQLClient {
 
   // ── DELETE MEAL PLAN (cascades entries manually) ──────────────────────────
   async deleteMealPlan(planId: string): Promise<{ deletedEntryCount: number }> {
-    // 1. Fetch all entry IDs (AppSync does not cascade deletes)
-    const planData = await this.query<{
-      getMealPlan: { entries: { items: Array<{ id: string }> } };
-    }>(
-      `query GetMealPlanEntryIds($id: ID!) {
-        getMealPlan(id: $id) {
-          entries { items { id } }
-        }
-      }`,
-      { id: planId }
-    );
+    // 1. Fetch all entry IDs across all pages (AppSync does not cascade deletes)
+    const entryIds: string[] = [];
+    let nextToken: string | null | undefined = undefined;
 
-    const entryIds = planData.getMealPlan.entries.items.map((e) => e.id);
+    do {
+      const planData = await this.query<{
+        getMealPlan: {
+          entries: {
+            items: Array<{ id: string }>;
+            nextToken?: string | null;
+          };
+        } | null;
+      }>(
+        `query GetMealPlanEntryIds($id: ID!, $nextToken: String) {
+          getMealPlan(id: $id) {
+            entries(nextToken: $nextToken) {
+              items { id }
+              nextToken
+            }
+          }
+        }`,
+        { id: planId, nextToken }
+      );
 
+      const entries = planData.getMealPlan?.entries;
+      if (!entries) break;
+
+      entryIds.push(...entries.items.map((e) => e.id));
+      nextToken = entries.nextToken;
+    } while (nextToken);
     // 2. Delete each entry
     for (const entryId of entryIds) {
       await this.query(
