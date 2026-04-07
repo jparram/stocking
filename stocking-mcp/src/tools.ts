@@ -1028,6 +1028,34 @@ async function dispatch(
       if (args['week_of']   !== undefined) updates['weekOf']   = toMonday(args['week_of'] as string);
       if (args['type']      !== undefined) updates['type']     = args['type'];
       if (args['member_id'] !== undefined) updates['memberId'] = (args['member_id'] as string | null) ?? null;
+
+      if (args['type'] !== undefined || args['member_id'] !== undefined) {
+        const existingPlan = await gql.getMealPlan(planId) as {
+          type?: string | null;
+          memberId?: string | null;
+        } | null;
+
+        if (!existingPlan) {
+          throw new Error(`Meal plan not found: ${planId}`);
+        }
+
+        const effectiveType = (updates['type'] as string | undefined) ?? existingPlan.type ?? undefined;
+        const effectiveMemberId = Object.prototype.hasOwnProperty.call(updates, 'memberId')
+          ? (updates['memberId'] as string | null)
+          : (existingPlan.memberId ?? null);
+
+        if (effectiveType !== 'individual' && effectiveType !== 'family') {
+          throw new Error(`Invalid meal plan type: ${String(effectiveType)}`);
+        }
+
+        if (effectiveType === 'individual' && !effectiveMemberId) {
+          throw new Error('Individual meal plans require member_id.');
+        }
+
+        if (effectiveType === 'family' && effectiveMemberId !== null) {
+          throw new Error('Family meal plans must not have member_id.');
+        }
+      }
       return gql.updateMealPlan(planId, updates as Parameters<typeof gql.updateMealPlan>[1]);
     }
 
