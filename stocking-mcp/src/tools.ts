@@ -35,6 +35,17 @@ function namesMatch(listName: string, instacartName: string): boolean {
   return significant.some((w) => instWords.includes(w));
 }
 
+// ── Meal plan helpers ─────────────────────────────────────────────────────────
+
+/** Normalize any ISO date string to the Monday of that week (UTC). */
+function toMonday(dateStr: string): string {
+  const d = new Date(dateStr);
+  const day = d.getUTCDay(); // 0=Sun, 1=Mon, …, 6=Sat
+  const diff = day === 0 ? -6 : 1 - day;
+  d.setUTCDate(d.getUTCDate() + diff);
+  return d.toISOString().slice(0, 10);
+}
+
 // ── Shared item resolution ────────────────────────────────────────────────────
 
 function resolveItem(
@@ -437,6 +448,102 @@ export const TOOL_DEFINITIONS = [
         list_id:         { type: 'string', description: 'Target shopping list ID' },
         store:           { type: 'string', enum: ['sams', 'ht', 'both'], description: 'Store (used for custom item defaults)' },
         ingredient_ids:  { type: 'array', items: { type: 'string' }, description: 'If omitted, all ingredients are added' },
+      },
+    },
+  },
+  {
+    name: 'create_meal_plan',
+    description:
+      'Creates a new meal plan for a given week. '
+      + 'weekOf is normalized to Monday of that week. '
+      + 'Family plans leave memberId unset; individual plans require a memberId.',
+    inputSchema: {
+      type: 'object',
+      required: ['week_of', 'type'],
+      properties: {
+        week_of:   { type: 'string', description: 'Any ISO date within the target week — normalized to Monday' },
+        type:      { type: 'string', enum: ['family', 'individual'] },
+        member_id: { type: 'string', description: 'Required for individual plans; omit for family plans' },
+      },
+    },
+  },
+  {
+    name: 'get_meal_plan',
+    description: 'Returns a meal plan and all its entries, sorted by dayOfWeek then mealType.',
+    inputSchema: {
+      type: 'object',
+      required: ['plan_id'],
+      properties: {
+        plan_id: { type: 'string' },
+      },
+    },
+  },
+  {
+    name: 'list_meal_plans',
+    description: 'Returns meal plans with optional filters.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        limit:     { type: 'number',  description: 'Max results (default 20)' },
+        week_of:   { type: 'string',  description: 'Filter to plans whose weekOf matches this ISO date (after normalization to Monday)' },
+        type:      { type: 'string',  enum: ['family', 'individual'] },
+        member_id: { type: 'string',  description: 'Filter by memberId (individual plans only)' },
+      },
+    },
+  },
+  {
+    name: 'update_meal_plan',
+    description: 'Updates meal plan metadata (weekOf, type, or memberId).',
+    inputSchema: {
+      type: 'object',
+      required: ['plan_id'],
+      properties: {
+        plan_id:   { type: 'string' },
+        week_of:   { type: 'string', description: 'ISO date — normalized to Monday' },
+        type:      { type: 'string', enum: ['family', 'individual'] },
+        member_id: { type: 'string', description: 'Set to null to remove member association (converts to family plan)' },
+      },
+    },
+  },
+  {
+    name: 'delete_meal_plan',
+    description: 'Deletes a meal plan and all its entries.',
+    inputSchema: {
+      type: 'object',
+      required: ['plan_id'],
+      properties: {
+        plan_id: { type: 'string' },
+      },
+    },
+  },
+  {
+    name: 'upsert_meal_entry',
+    description:
+      'Creates a new meal entry in a plan, or updates an existing one by entry_id. '
+      + 'Supply either a recipe_id (links to a Recipe record) or a label (free-text description).',
+    inputSchema: {
+      type: 'object',
+      required: ['plan_id', 'day_of_week', 'meal_type'],
+      properties: {
+        plan_id:     { type: 'string' },
+        entry_id:    { type: 'string', description: 'Provide to update an existing entry; omit to create' },
+        day_of_week: { type: 'string', enum: ['sun', 'mon', 'tue', 'wed', 'thu', 'fri', 'sat'] },
+        meal_type:   { type: 'string', enum: ['breakfast', 'lunch', 'dinner'] },
+        recipe_id:   { type: 'string', description: 'ID of a Recipe record (preferred)' },
+        label:       { type: 'string', description: 'Free-text meal name when no recipe exists' },
+        notes:       { type: 'string' },
+      },
+    },
+  },
+  {
+    name: 'delete_meal_entry',
+    description: 'Removes a single meal entry from a plan.',
+    inputSchema: {
+      type: 'object',
+      required: ['entry_id'],
+      properties: {
+        entry_id: { type: 'string' },
+        plan_id:  { type: 'string', description: 'Plan ID (for confirmation context)' },
       },
     },
   },
@@ -870,6 +977,96 @@ async function dispatch(
         added,
         added_as_custom: addedAsCustom,
         skipped,
+      };
+    }
+
+    case 'create_meal_plan': {
+      const type     = args['type'] as 'family' | 'individual';
+      const memberId = args['member_id'] as string | undefined;
+
+      if (type === 'individual' && !memberId) {
+        throw new Error('individual meal plans require a member_id');
+      }
+      if (type === 'family' && memberId) {
+        throw new Error('family meal plans must not have a member_id');
+      }
+
+      const weekOf = toMonday(args['week_of'] as string);
+      const plan = await gql.createMealPlan({
+        weekOf,
+        type,
+        memberId: memberId ?? null,
+      });
+      return {
+        success: true,
+        plan_id: plan.id,
+        week_of: weekOf,
+        type,
+        member_id: memberId ?? null,
+        message: 'Meal plan created.',
+      };
+    }
+
+    case 'get_meal_plan':
+      return gql.getMealPlan(args['plan_id'] as string);
+
+    case 'list_meal_plans': {
+      const weekOf = args['week_of']
+        ? toMonday(args['week_of'] as string)
+        : undefined;
+      return gql.listMealPlans(
+        (args['limit']     as number | undefined) ?? 20,
+        weekOf,
+        args['type']      as string | undefined,
+        args['member_id'] as string | undefined
+      );
+    }
+
+    case 'update_meal_plan': {
+      const planId  = args['plan_id'] as string;
+      const updates: Record<string, unknown> = {};
+      if (args['week_of']   !== undefined) updates['weekOf']   = toMonday(args['week_of'] as string);
+      if (args['type']      !== undefined) updates['type']     = args['type'];
+      if (args['member_id'] !== undefined) updates['memberId'] = (args['member_id'] as string | null) ?? null;
+      return gql.updateMealPlan(planId, updates as Parameters<typeof gql.updateMealPlan>[1]);
+    }
+
+    case 'delete_meal_plan': {
+      const planId = args['plan_id'] as string;
+      const result = await gql.deleteMealPlan(planId);
+      return {
+        success: true,
+        plan_id: planId,
+        deleted_entry_count: result.deletedEntryCount,
+      };
+    }
+
+    case 'upsert_meal_entry': {
+      const planId  = args['plan_id']     as string;
+      const entryId = args['entry_id']    as string | undefined;
+      const entryInput = {
+        dayOfWeek: args['day_of_week'] as 'sun' | 'mon' | 'tue' | 'wed' | 'thu' | 'fri' | 'sat',
+        mealType:  args['meal_type']   as 'breakfast' | 'lunch' | 'dinner',
+        recipeId:  args['recipe_id']   as string | null | undefined,
+        label:     args['label']       as string | null | undefined,
+        notes:     args['notes']       as string | null | undefined,
+      };
+      if (entryId) {
+        const updated = await gql.updateMealEntry(entryId, entryInput);
+        return { success: true, entry_id: entryId, plan_id: planId, action: 'updated', entry: updated };
+      } else {
+        const created = await gql.createMealEntry(planId, entryInput);
+        return { success: true, entry_id: created.id, plan_id: planId, action: 'created' };
+      }
+    }
+
+    case 'delete_meal_entry': {
+      const entryId = args['entry_id'] as string;
+      const result  = await gql.deleteMealEntry(entryId);
+      return {
+        success: true,
+        deleted_entry_id: result.id,
+        plan_id: args['plan_id'] as string | undefined,
       };
     }
 

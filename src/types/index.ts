@@ -88,6 +88,31 @@ export interface RecipeIngredient {
   updatedAt: string;
 }
 
+export type DayOfWeek = 'sun' | 'mon' | 'tue' | 'wed' | 'thu' | 'fri' | 'sat';
+export type MealType = 'breakfast' | 'lunch' | 'dinner';
+export type PlanType = 'family' | 'individual';
+
+export interface MealPlan {
+  id: string;
+  weekOf: string;        // ISO date of Monday of the week
+  type: PlanType;
+  memberId?: string | null; // null for family plans; Cognito sub for individual
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface MealEntry {
+  id: string;
+  planId: string;
+  dayOfWeek: DayOfWeek;
+  mealType: MealType;
+  recipeId?: string | null; // optional link to a Recipe record
+  label?: string | null;    // free-text fallback when no recipe
+  notes?: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
 export interface AppState {
   lists: ShoppingList[];
   weeklyLogs: WeeklyLog[];

@@ -104,6 +104,35 @@ const schema = a.schema({
       allow.group('family').to(['create', 'read', 'update', 'delete']),
       allow.publicApiKey().to(['create', 'read', 'update', 'delete']),
     ]),
+
+  MealPlan: a
+    .model({
+      weekOf: a.date().required(),   // ISO date of Monday of the week
+      type: a.enum(['family', 'individual']),
+      memberId: a.string(),          // null for family plans; Cognito sub for individual
+      entries: a.hasMany('MealEntry', 'planId'),
+    })
+    .authorization(allow => [
+      allow.owner(),
+      allow.group('family').to(['create', 'read', 'update', 'delete']),
+      allow.publicApiKey().to(['create', 'read', 'update', 'delete']),
+    ]),
+
+  MealEntry: a
+    .model({
+      planId: a.id().required(),
+      plan: a.belongsTo('MealPlan', 'planId'),
+      dayOfWeek: a.enum(['sun', 'mon', 'tue', 'wed', 'thu', 'fri', 'sat']),
+      mealType: a.enum(['breakfast', 'lunch', 'dinner']),
+      recipeId: a.string(),          // optional link to a Recipe record
+      label: a.string(),             // free-text fallback when no recipe
+      notes: a.string(),
+    })
+    .authorization(allow => [
+      allow.owner(),
+      allow.group('family').to(['create', 'read', 'update', 'delete']),
+      allow.publicApiKey().to(['create', 'read', 'update', 'delete']),
+    ]),
 });
 
 export type Schema = ClientSchema<typeof schema>;
