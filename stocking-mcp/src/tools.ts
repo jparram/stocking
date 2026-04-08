@@ -52,7 +52,7 @@ function toMonday(dateStr: string): string {
 // ── Shared item resolution ────────────────────────────────────────────────────
 
 function resolveItem(
-  ri: { item_id: string; name?: string; quantity: number; notes?: string },
+  ri: { item_id: string; name?: string; quantity: number; unit?: string; notes?: string },
   catalog: CatalogItem[],
   defaultStore: string
 ) {
@@ -73,7 +73,7 @@ function resolveItem(
       category:   'Custom',
       store:      defaultStore === 'both' ? 'both' : defaultStore,
       quantity:   ri.quantity,
-      unit:       '',
+      unit:       ri.unit ?? '',
       approxCost: 0,
       checked:    false,
       notes:      ri.notes ?? '',
@@ -86,7 +86,7 @@ function resolveItem(
     category:   cat.category,
     store:      cat.store,
     quantity:   ri.quantity,
-    unit:       cat.unit,
+    unit:       ri.unit ?? cat.unit,
     approxCost: cat.approxCost,
     checked:    false,
     notes:      ri.notes ?? cat.notes ?? '',
@@ -149,6 +149,7 @@ export const TOOL_DEFINITIONS = [
               item_id:  { type: 'string', description: 'Catalog ID or "custom" for off-catalog items.' },
               name:     { type: 'string', description: 'Display name. Required when item_id is "custom".' },
               quantity: { type: 'number' },
+              unit:     { type: 'string', description: 'Unit of measure (e.g. "lbs", "oz"). Persisted as-is for custom items; overrides catalog default for catalog items.' },
               notes:    { type: 'string' },
             },
           },
@@ -177,6 +178,7 @@ export const TOOL_DEFINITIONS = [
               item_id:  { type: 'string', description: 'Catalog ID or "custom" for off-catalog items.' },
               name:     { type: 'string', description: 'Display name. Required when item_id is "custom".' },
               quantity: { type: 'number' },
+              unit:     { type: 'string', description: 'Unit of measure (e.g. "lbs", "oz"). Persisted as-is for custom items; overrides catalog default for catalog items.' },
               notes:    { type: 'string' },
             },
           },
@@ -575,6 +577,28 @@ export const TOOL_DEFINITIONS = [
       },
     },
   },
+  {
+    name: 'generate_list_from_plan',
+    description:
+      'Aggregates ingredients from all recipes planned for a given week, '
+      + 'combining duplicate ingredients where units match (e.g. two recipes both needing chicken). '
+      + 'Catalog-linked ingredients are resolved to master catalog items; '
+      + 'ingredients without a catalog link are included as custom free-text items. '
+      + 'Empty meal slots (no recipe assigned) are silently skipped. '
+      + 'Returns the aggregated item list in create_shopping_list-compatible format '
+      + 'as a preview/confirmation step — no list is created yet. '
+      + 'Call create_shopping_list with the returned items to finalise.',
+    inputSchema: {
+      type: 'object',
+      required: ['week_of', 'store'],
+      properties: {
+        week_of:   { type: 'string', description: 'ISO date of any day in the target week (normalised to Monday)' },
+        store:     { type: 'string', enum: ['sams', 'ht', 'both'], description: 'Target store for the shopping list' },
+        plan_type: { type: 'string', enum: ['family', 'individual'], description: 'Plan type to aggregate from (defaults to "family")' },
+        member_id: { type: 'string', description: 'Required when plan_type is "individual"' },
+      },
+    },
+  },
 ];
 
 // ── Handler ───────────────────────────────────────────────────────────────────
@@ -617,7 +641,7 @@ async function dispatch(
       const store    = args['store'] as string;
       const weekOf   = (args['week_of'] as string) ?? cadence.getMondayOf();
       const rawItems = args['items'] as Array<{
-        item_id: string; name?: string; quantity: number; notes?: string;
+        item_id: string; name?: string; quantity: number; unit?: string; notes?: string;
       }>;
       const resolvedItems = rawItems.map((ri) => resolveItem(ri, catalog, store));
       const storeName =
@@ -640,7 +664,7 @@ async function dispatch(
       const listId   = args['list_id'] as string;
       const store    = args['store'] as string;
       const rawItems = args['items'] as Array<{
-        item_id: string; name?: string; quantity: number; notes?: string;
+        item_id: string; name?: string; quantity: number; unit?: string; notes?: string;
       }>;
       const resolvedItems = rawItems.map((ri) => resolveItem(ri, catalog, store));
       const added: { id: string; name: string }[] = [];
@@ -1182,6 +1206,163 @@ async function dispatch(
         success: true,
         deleted_entry_id: result.id,
         plan_id: args['plan_id'] as string | undefined,
+      };
+    }
+
+    case 'generate_list_from_plan': {
+      const weekOf   = toMonday(args['week_of'] as string);
+      const store    = args['store'] as string;
+      const planType = (args['plan_type'] as string | undefined) ?? 'family';
+      const memberId = args['member_id'] as string | undefined;
+
+      if (planType === 'individual' && !memberId) {
+        return {
+          error: 'member_id_required',
+          plan_type: planType,
+          message: 'member_id is required when plan_type is "individual".',
+        };
+      }
+
+      if (planType === 'family' && memberId) {
+        return {
+          error: 'member_id_not_allowed',
+          plan_type: planType,
+          message: 'member_id must not be provided when plan_type is "family".',
+        };
+      }
+      // Find the meal plan for this week
+      const plans = await gql.listMealPlans(1, weekOf, planType, memberId);
+      if (plans.length === 0) {
+        return {
+          error: 'no_plan',
+          week_of: weekOf,
+          plan_type: planType,
+          message: `No ${planType} meal plan found for week of ${weekOf}. Create one with create_meal_plan first.`,
+        };
+      }
+
+      const plan = plans[0] as Record<string, unknown>;
+      const planData = await gql.getMealPlan(plan['id'] as string) as {
+        entries: Array<{
+          recipeId?: string | null;
+          dayOfWeek: string;
+          mealType: string;
+        }>;
+      };
+
+      // Collect unique recipe IDs — skip slots without a recipe
+      const recipeIds = [...new Set(
+        planData.entries
+          .filter(e => e.recipeId)
+          .map(e => e.recipeId as string),
+      )];
+
+      if (recipeIds.length === 0) {
+        return {
+          week_of: weekOf,
+          plan_type: planType,
+          plan_id: plan['id'],
+          recipe_count: 0,
+          item_count: 0,
+          items: [],
+          message: 'No recipes found in the meal plan for this week. Assign recipes to meal slots (via upsert_meal_entry) and try again.',
+        };
+      }
+
+      // Fetch ingredients for each recipe
+      interface MealIngredient {
+        name: string;
+        amount?: number | null;
+        unit?: string | null;
+        catalogItemId?: string | null;
+        notes?: string | null;
+      }
+      interface RecipeData {
+        name: string;
+        ingredients: MealIngredient[];
+      }
+
+      /** Round a quantity to 3 decimal places. */
+      const roundQty = (n: number) => Math.round(n * 1000) / 1000;
+      /** Normalise unit for aggregation key — empty/null collapses to 'each'. */
+      const normalizeUnit = (u?: string | null) => (u ?? '').trim().toLowerCase() || 'each';
+
+      const recipeNames: string[] = [];
+      // Map: key → aggregated item
+      const aggregated = new Map<string, {
+        item_id: string;
+        name?: string;
+        quantity: number;
+        unit: string;
+      }>();
+
+      const recipes = await Promise.all(
+        recipeIds.map(async (recipeId) => await gql.getRecipe(recipeId) as RecipeData),
+      );
+
+      for (const data of recipes) {
+        recipeNames.push(data.name);
+
+        for (const ing of data.ingredients) {
+          const amount = ing.amount ?? 1;
+
+          if (ing.catalogItemId) {
+            const cat = catalog.find(c => c.id === ing.catalogItemId);
+            if (cat) {
+              const key = `catalog:${ing.catalogItemId}`;
+              const existing = aggregated.get(key);
+              if (existing) {
+                existing.quantity = roundQty(existing.quantity + amount);
+              } else {
+                aggregated.set(key, {
+                  item_id: cat.id,
+                  quantity: amount,
+                  unit: ing.unit ?? cat.unit,
+                });
+              }
+              continue;
+            }
+          }
+          // No catalog match → custom item, keyed by name + normalised unit
+          const unitKey = normalizeUnit(ing.unit);
+          const key = `custom:${ing.name.toLowerCase()}:${unitKey}`;
+          const existing = aggregated.get(key);
+          if (existing) {
+            existing.quantity = roundQty(existing.quantity + amount);
+          } else {
+            aggregated.set(key, {
+              item_id: 'custom',
+              name: ing.name,
+              quantity: amount,
+              unit: ing.unit ?? 'each',
+            });
+          }
+        }
+      }
+
+      const items = Array.from(aggregated.values()).map(item => ({
+        item_id: item.item_id,
+        ...(item.item_id === 'custom' ? { name: item.name } : {}),
+        quantity: item.quantity,
+        unit: item.unit,
+      }));
+
+      const slotsWithRecipes = planData.entries.filter(e => e.recipeId).length;
+      return {
+        week_of:      weekOf,
+        store,
+        plan_type:    planType,
+        plan_id:      plan['id'],
+        recipe_count: recipeIds.length,
+        recipes:      recipeNames,
+        slot_count:   slotsWithRecipes,
+        item_count:   items.length,
+        items,
+        message:
+          `Found ${recipeIds.length} unique recipe(s) across ${slotsWithRecipes} meal slot(s). `
+          + `Aggregated ${items.length} item(s). `
+          + `Review the list above and call create_shopping_list with store="${store}", `
+          + `week_of="${weekOf}", and these items to create the list.`,
       };
     }
 
