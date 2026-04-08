@@ -102,7 +102,7 @@ Claude will confirm the `stocking-mcp` server is connected and list the availabl
 | `delete_meal_entry` | Remove a single meal entry from a plan by its entry ID |
 | `list_meal_plans` | List weeks that have plans, with optional filters by week, type, or member |
 
-#### Shopping tool signatures (generate_list_from_plan)
+#### Shopping tool signatures (generate_list_from_plan + create_shopping_list)
 
 ```ts
 generate_list_from_plan({
@@ -121,14 +121,25 @@ generate_list_from_plan({
       item_id: string,        // catalog ID, or 'custom' for free-text items
       name?: string,          // only present when item_id === 'custom'
       quantity: number,
-      unit: string,
+      unit: string,           // unit of measure — pass directly to create_shopping_list
     }>,
     message,
   }
-  | { error: 'no_plan', message }
+  | { error: 'no_plan' | 'member_id_required' | 'member_id_not_allowed', message }
 ```
 
-> **Workflow**: call `generate_list_from_plan` → review items → call `create_shopping_list` with the same `store`, `week_of`, and `items` array to create the list.
+> **Workflow**: call `generate_list_from_plan` → review items → call `create_shopping_list` with the same `store`, `week_of`, and `items` array (including `unit`) to create the list. `unit` is accepted and persisted by `create_shopping_list` and `add_list_item`.
+
+```ts
+// Item format accepted by create_shopping_list and add_list_item:
+{
+  item_id:  string,   // catalog ID or 'custom'
+  name?:    string,   // required when item_id === 'custom'
+  quantity: number,
+  unit?:    string,   // persisted as-is for custom items; overrides catalog default for catalog items
+  notes?:   string,
+}
+```
 
 #### Meal plan tool signatures
 

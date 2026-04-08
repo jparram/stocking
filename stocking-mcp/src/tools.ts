@@ -52,7 +52,7 @@ function toMonday(dateStr: string): string {
 // ── Shared item resolution ────────────────────────────────────────────────────
 
 function resolveItem(
-  ri: { item_id: string; name?: string; quantity: number; notes?: string },
+  ri: { item_id: string; name?: string; quantity: number; unit?: string; notes?: string },
   catalog: CatalogItem[],
   defaultStore: string
 ) {
@@ -73,7 +73,7 @@ function resolveItem(
       category:   'Custom',
       store:      defaultStore === 'both' ? 'both' : defaultStore,
       quantity:   ri.quantity,
-      unit:       '',
+      unit:       ri.unit ?? '',
       approxCost: 0,
       checked:    false,
       notes:      ri.notes ?? '',
@@ -86,7 +86,7 @@ function resolveItem(
     category:   cat.category,
     store:      cat.store,
     quantity:   ri.quantity,
-    unit:       cat.unit,
+    unit:       ri.unit ?? cat.unit,
     approxCost: cat.approxCost,
     checked:    false,
     notes:      ri.notes ?? cat.notes ?? '',
@@ -149,6 +149,7 @@ export const TOOL_DEFINITIONS = [
               item_id:  { type: 'string', description: 'Catalog ID or "custom" for off-catalog items.' },
               name:     { type: 'string', description: 'Display name. Required when item_id is "custom".' },
               quantity: { type: 'number' },
+              unit:     { type: 'string', description: 'Unit of measure (e.g. "lbs", "oz"). Persisted as-is for custom items; overrides catalog default for catalog items.' },
               notes:    { type: 'string' },
             },
           },
@@ -177,6 +178,7 @@ export const TOOL_DEFINITIONS = [
               item_id:  { type: 'string', description: 'Catalog ID or "custom" for off-catalog items.' },
               name:     { type: 'string', description: 'Display name. Required when item_id is "custom".' },
               quantity: { type: 'number' },
+              unit:     { type: 'string', description: 'Unit of measure (e.g. "lbs", "oz"). Persisted as-is for custom items; overrides catalog default for catalog items.' },
               notes:    { type: 'string' },
             },
           },
@@ -639,7 +641,7 @@ async function dispatch(
       const store    = args['store'] as string;
       const weekOf   = (args['week_of'] as string) ?? cadence.getMondayOf();
       const rawItems = args['items'] as Array<{
-        item_id: string; name?: string; quantity: number; notes?: string;
+        item_id: string; name?: string; quantity: number; unit?: string; notes?: string;
       }>;
       const resolvedItems = rawItems.map((ri) => resolveItem(ri, catalog, store));
       const storeName =
@@ -662,7 +664,7 @@ async function dispatch(
       const listId   = args['list_id'] as string;
       const store    = args['store'] as string;
       const rawItems = args['items'] as Array<{
-        item_id: string; name?: string; quantity: number; notes?: string;
+        item_id: string; name?: string; quantity: number; unit?: string; notes?: string;
       }>;
       const resolvedItems = rawItems.map((ri) => resolveItem(ri, catalog, store));
       const added: { id: string; name: string }[] = [];
