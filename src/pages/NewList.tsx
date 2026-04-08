@@ -1,5 +1,5 @@
 import { useState, useMemo } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, Link } from 'react-router-dom';
 import type { Store, Item, AppState, RecipeIngredient, ShoppingList, ShoppingListItem } from '../types';
 import { MASTER_CATALOG } from '../data/masterCatalog';
 import { createShoppingList, storeLabel, isDueThisWeek, generateId, getMondayOf, formatDate } from '../utils';
@@ -80,7 +80,7 @@ function aggregateIngredients(
     } else {
       map.set(key, {
         id: generateId(),
-        itemId: `custom-${ing.name.toLowerCase().replace(/\s+/g, '-')}`,
+        itemId: `custom-${generateId()}`,
         name: ing.name,
         category: 'Custom',
         store: defaultStore,
@@ -110,6 +110,7 @@ export default function NewList({ state, onAdd }: NewListProps) {
   const [listName, setListName] = useState('');
 
   // ── Meal-plan generation state ──────────────────────────────────────────────
+  const [isMealPlanPath, setIsMealPlanPath] = useState(false);
   const [mealPlanWeekOf, setMealPlanWeekOf] = useState(getMondayOf());
   const [mealPlanGenerating, setMealPlanGenerating] = useState(false);
   const [mealPlanError, setMealPlanError] = useState<string | null>(null);
@@ -153,9 +154,6 @@ export default function NewList({ state, onAdd }: NewListProps) {
 
   const selectedItemObjects: Item[] = MASTER_CATALOG.filter(i => selectedItems.has(i.id));
 
-  /** True when the user came through the meal-plan path (generated items, no manual selection). */
-  const isMealPlanFlow = generatedItems.length > 0 && selectedItems.size === 0;
-
   const generateFromMealPlan = async () => {
     setMealPlanGenerating(true);
     setMealPlanError(null);
@@ -188,14 +186,13 @@ export default function NewList({ state, onAdd }: NewListProps) {
 
   const handleSave = () => {
     let list: ShoppingList;
-    if (isMealPlanFlow) {
+    if (isMealPlanPath) {
       // Meal-plan flow — build list directly from aggregated items
-      const weekOf = getMondayOf();
       const now = new Date().toISOString();
       list = {
         id: generateId(),
-        name: listName || `Week of ${formatDate(weekOf)} — ${storeLabel(selectedStore)} (Meal Plan)`,
-        weekOf,
+        name: listName || `Week of ${formatDate(mealPlanWeekOf)} — ${storeLabel(selectedStore)} (Meal Plan)`,
+        weekOf: mealPlanWeekOf,
         store: selectedStore,
         items: generatedItems,
         status: 'active',
@@ -214,7 +211,7 @@ export default function NewList({ state, onAdd }: NewListProps) {
     <div className="max-w-2xl mx-auto">
       {/* Step indicator — adapts to normal vs. meal-plan flow */}
       {(() => {
-        const visibleSteps: Step[] = step === 'meal-plan' || (step === 'review' && isMealPlanFlow)
+        const visibleSteps: Step[] = step === 'meal-plan' || (step === 'review' && isMealPlanPath)
           ? ['store', 'meal-plan', 'review']
           : ['store', 'items', 'review'];
         return (
@@ -273,7 +270,7 @@ export default function NewList({ state, onAdd }: NewListProps) {
             ))}
           </div>
           <button
-            onClick={() => setStep('items')}
+            onClick={() => { setIsMealPlanPath(false); setStep('items'); }}
             className="w-full bg-sams text-white py-3 rounded-lg font-semibold hover:bg-sams-dark transition-colors"
           >
             Next: Select Items →
@@ -288,6 +285,7 @@ export default function NewList({ state, onAdd }: NewListProps) {
           </div>
           <button
             onClick={() => {
+              setIsMealPlanPath(true);
               setGeneratedItems([]);
               setMealPlanError(null);
               setStep('meal-plan');
@@ -353,7 +351,7 @@ export default function NewList({ state, onAdd }: NewListProps) {
             ) : (
               <div className="bg-brand-bg rounded-xl border border-brand-border p-4 text-center text-sm text-brand-muted">
                 No recipes found for this week. Assign recipes to meal slots on the{' '}
-                <a href="/meal-plan" className="text-ht underline">Meal Plan</a> page.
+                <Link to="/meal-plan" className="text-ht underline">Meal Plan</Link> page.
               </div>
             );
           })()}
@@ -525,7 +523,7 @@ export default function NewList({ state, onAdd }: NewListProps) {
             className="w-full border border-brand-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-sams"
           />
           {/* Meal-plan flow: show generated items */}
-          {isMealPlanFlow ? (
+          {isMealPlanPath ? (
             <div className="bg-white rounded-xl border border-brand-border shadow-sm overflow-hidden">
               <div className="px-4 py-3 bg-brand-bg border-b border-brand-border flex justify-between">
                 <span className="font-semibold text-sm">{generatedItems.length} items</span>
@@ -578,7 +576,7 @@ export default function NewList({ state, onAdd }: NewListProps) {
 
           <div className="flex gap-3">
             <button
-              onClick={() => setStep(isMealPlanFlow ? 'meal-plan' : 'items')}
+              onClick={() => setStep(isMealPlanPath ? 'meal-plan' : 'items')}
               className="px-4 py-2.5 border border-brand-border rounded-lg text-sm font-medium hover:bg-brand-bg transition-colors"
             >
               ← Back
