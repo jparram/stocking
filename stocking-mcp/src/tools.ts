@@ -1265,6 +1265,11 @@ async function dispatch(
         ingredients: MealIngredient[];
       }
 
+      /** Round a quantity to 3 decimal places. */
+      const roundQty = (n: number) => Math.round(n * 1000) / 1000;
+      /** Normalise unit for aggregation key — empty/null collapses to 'each'. */
+      const normalizeUnit = (u?: string | null) => (u ?? '').trim().toLowerCase() || 'each';
+
       const recipeNames: string[] = [];
       // Map: key → aggregated item
       const aggregated = new Map<string, {
@@ -1287,7 +1292,7 @@ async function dispatch(
               const key = `catalog:${ing.catalogItemId}`;
               const existing = aggregated.get(key);
               if (existing) {
-                existing.quantity = Math.round((existing.quantity + amount) * 1000) / 1000;
+                existing.quantity = roundQty(existing.quantity + amount);
               } else {
                 aggregated.set(key, {
                   item_id: cat.id,
@@ -1298,12 +1303,12 @@ async function dispatch(
               continue;
             }
           }
-          // No catalog match → custom item, keyed by name + unit
-          const unit = (ing.unit ?? '').toLowerCase();
-          const key = `custom:${ing.name.toLowerCase()}:${unit}`;
+          // No catalog match → custom item, keyed by name + normalised unit
+          const unitKey = normalizeUnit(ing.unit);
+          const key = `custom:${ing.name.toLowerCase()}:${unitKey}`;
           const existing = aggregated.get(key);
           if (existing) {
-            existing.quantity = Math.round((existing.quantity + amount) * 1000) / 1000;
+            existing.quantity = roundQty(existing.quantity + amount);
           } else {
             aggregated.set(key, {
               item_id: 'custom',

@@ -26,6 +26,18 @@ function formatWeekRange(weekOf: string): string {
   return `${fmt(mon)} – ${fmt(sun)}, ${sun.getFullYear()}`;
 }
 
+/** Round a quantity to 3 decimal places to avoid floating-point accumulation errors. */
+function roundQty(n: number): number {
+  return Math.round(n * 1000) / 1000;
+}
+
+/** Normalize a unit string for use as an aggregation key.
+ *  Empty / null / undefined all collapse to 'each'. */
+function normalizeUnit(unit?: string | null): string {
+  const u = (unit ?? '').trim().toLowerCase();
+  return u || 'each';
+}
+
 /** Aggregate a flat list of recipe ingredients into deduplicated ShoppingListItems.
  *  Catalog items (same catalogItemId) are summed; custom items are keyed by name+unit. */
 function aggregateIngredients(
@@ -41,7 +53,7 @@ function aggregateIngredients(
         const key = `catalog:${ing.catalogItemId}`;
         const existing = map.get(key);
         if (existing) {
-          existing.quantity = Math.round((existing.quantity + (ing.amount ?? 1)) * 1000) / 1000;
+          existing.quantity = roundQty(existing.quantity + (ing.amount ?? 1));
         } else {
           map.set(key, {
             id: generateId(),
@@ -59,12 +71,12 @@ function aggregateIngredients(
         continue;
       }
     }
-    // No catalogItemId (or not found) → custom item, keyed by name + unit
-    const unit = (ing.unit ?? '').toLowerCase();
-    const key = `custom:${ing.name.toLowerCase()}:${unit}`;
+    // No catalogItemId (or not found) → custom item, keyed by name + normalised unit
+    const unitKey = normalizeUnit(ing.unit);
+    const key = `custom:${ing.name.toLowerCase()}:${unitKey}`;
     const existing = map.get(key);
     if (existing) {
-      existing.quantity = Math.round((existing.quantity + (ing.amount ?? 1)) * 1000) / 1000;
+      existing.quantity = roundQty(existing.quantity + (ing.amount ?? 1));
     } else {
       map.set(key, {
         id: generateId(),
@@ -141,6 +153,9 @@ export default function NewList({ state, onAdd }: NewListProps) {
 
   const selectedItemObjects: Item[] = MASTER_CATALOG.filter(i => selectedItems.has(i.id));
 
+  /** True when the user came through the meal-plan path (generated items, no manual selection). */
+  const isMealPlanFlow = generatedItems.length > 0 && selectedItems.size === 0;
+
   const generateFromMealPlan = async () => {
     setMealPlanGenerating(true);
     setMealPlanError(null);
@@ -173,7 +188,7 @@ export default function NewList({ state, onAdd }: NewListProps) {
 
   const handleSave = () => {
     let list: ShoppingList;
-    if (step !== 'items' && generatedItems.length > 0) {
+    if (isMealPlanFlow) {
       // Meal-plan flow — build list directly from aggregated items
       const weekOf = getMondayOf();
       const now = new Date().toISOString();
@@ -199,7 +214,7 @@ export default function NewList({ state, onAdd }: NewListProps) {
     <div className="max-w-2xl mx-auto">
       {/* Step indicator — adapts to normal vs. meal-plan flow */}
       {(() => {
-        const visibleSteps: Step[] = step === 'meal-plan' || (step === 'review' && generatedItems.length > 0 && !selectedItems.size)
+        const visibleSteps: Step[] = step === 'meal-plan' || (step === 'review' && isMealPlanFlow)
           ? ['store', 'meal-plan', 'review']
           : ['store', 'items', 'review'];
         return (
@@ -510,7 +525,7 @@ export default function NewList({ state, onAdd }: NewListProps) {
             className="w-full border border-brand-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-sams"
           />
           {/* Meal-plan flow: show generated items */}
-          {generatedItems.length > 0 && !selectedItems.size ? (
+          {isMealPlanFlow ? (
             <div className="bg-white rounded-xl border border-brand-border shadow-sm overflow-hidden">
               <div className="px-4 py-3 bg-brand-bg border-b border-brand-border flex justify-between">
                 <span className="font-semibold text-sm">{generatedItems.length} items</span>
@@ -563,7 +578,7 @@ export default function NewList({ state, onAdd }: NewListProps) {
 
           <div className="flex gap-3">
             <button
-              onClick={() => setStep(generatedItems.length > 0 && !selectedItems.size ? 'meal-plan' : 'items')}
+              onClick={() => setStep(isMealPlanFlow ? 'meal-plan' : 'items')}
               className="px-4 py-2.5 border border-brand-border rounded-lg text-sm font-medium hover:bg-brand-bg transition-colors"
             >
               ← Back
