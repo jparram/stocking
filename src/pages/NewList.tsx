@@ -1,11 +1,88 @@
 import { useState, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
-import type { Store, Item, AppState } from '../types';
+import type { Store, Item, AppState, RecipeIngredient, ShoppingList, ShoppingListItem } from '../types';
 import { MASTER_CATALOG } from '../data/masterCatalog';
-import { createShoppingList, storeLabel, isDueThisWeek } from '../utils';
+import { createShoppingList, storeLabel, isDueThisWeek, generateId, getMondayOf, formatDate } from '../utils';
 import StoreBadge from '../components/StoreBadge';
+import { useMealCalendar } from '../hooks/useMealCalendar';
+import { useRecipes } from '../hooks/useRecipes';
 
-type Step = 'store' | 'items' | 'review';
+type Step = 'store' | 'meal-plan' | 'items' | 'review';
+
+// ── Meal-plan helpers ─────────────────────────────────────────────────────────
+
+function shiftWeek(weekOf: string, delta: number): string {
+  const d = new Date(weekOf + 'T12:00:00');
+  d.setDate(d.getDate() + delta * 7);
+  return d.toISOString().split('T')[0];
+}
+
+function formatWeekRange(weekOf: string): string {
+  const mon = new Date(weekOf + 'T12:00:00');
+  const sun = new Date(mon);
+  sun.setDate(sun.getDate() + 6);
+  const fmt = (d: Date) =>
+    d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+  return `${fmt(mon)} – ${fmt(sun)}, ${sun.getFullYear()}`;
+}
+
+/** Aggregate a flat list of recipe ingredients into deduplicated ShoppingListItems.
+ *  Catalog items (same catalogItemId) are summed; custom items are keyed by name+unit. */
+function aggregateIngredients(
+  ingredients: RecipeIngredient[],
+  defaultStore: Store,
+): ShoppingListItem[] {
+  const map = new Map<string, ShoppingListItem>();
+
+  for (const ing of ingredients) {
+    if (ing.catalogItemId) {
+      const cat = MASTER_CATALOG.find(c => c.id === ing.catalogItemId);
+      if (cat) {
+        const key = `catalog:${ing.catalogItemId}`;
+        const existing = map.get(key);
+        if (existing) {
+          existing.quantity = Math.round((existing.quantity + (ing.amount ?? 1)) * 1000) / 1000;
+        } else {
+          map.set(key, {
+            id: generateId(),
+            itemId: cat.id,
+            name: cat.name,
+            category: cat.category,
+            store: cat.store,
+            quantity: ing.amount ?? 1,
+            unit: ing.unit ?? cat.unit,
+            approxCost: cat.approxCost,
+            checked: false,
+            notes: ing.notes ?? undefined,
+          });
+        }
+        continue;
+      }
+    }
+    // No catalogItemId (or not found) → custom item, keyed by name + unit
+    const unit = (ing.unit ?? '').toLowerCase();
+    const key = `custom:${ing.name.toLowerCase()}:${unit}`;
+    const existing = map.get(key);
+    if (existing) {
+      existing.quantity = Math.round((existing.quantity + (ing.amount ?? 1)) * 1000) / 1000;
+    } else {
+      map.set(key, {
+        id: generateId(),
+        itemId: `custom-${ing.name.toLowerCase().replace(/\s+/g, '-')}`,
+        name: ing.name,
+        category: 'Custom',
+        store: defaultStore,
+        quantity: ing.amount ?? 1,
+        unit: ing.unit ?? 'each',
+        approxCost: 0,
+        checked: false,
+        notes: ing.notes ?? undefined,
+      });
+    }
+  }
+
+  return Array.from(map.values());
+}
 
 interface NewListProps {
   state: AppState;
@@ -19,6 +96,15 @@ export default function NewList({ state, onAdd }: NewListProps) {
   const [selectedItems, setSelectedItems] = useState<Set<string>>(new Set());
   const [search, setSearch] = useState('');
   const [listName, setListName] = useState('');
+
+  // ── Meal-plan generation state ──────────────────────────────────────────────
+  const [mealPlanWeekOf, setMealPlanWeekOf] = useState(getMondayOf());
+  const [mealPlanGenerating, setMealPlanGenerating] = useState(false);
+  const [mealPlanError, setMealPlanError] = useState<string | null>(null);
+  const [generatedItems, setGeneratedItems] = useState<ShoppingListItem[]>([]);
+
+  const { weekEntries } = useMealCalendar();
+  const { getIngredients } = useRecipes();
 
   const suggestedItems = useMemo(() => {
     return MASTER_CATALOG.filter(item => {
@@ -55,37 +141,91 @@ export default function NewList({ state, onAdd }: NewListProps) {
 
   const selectedItemObjects: Item[] = MASTER_CATALOG.filter(i => selectedItems.has(i.id));
 
+  const generateFromMealPlan = async () => {
+    setMealPlanGenerating(true);
+    setMealPlanError(null);
+    setGeneratedItems([]);
+    try {
+      const entries = weekEntries(mealPlanWeekOf);
+      const recipeIds = [...new Set(
+        entries.filter(e => e.recipeId).map(e => e.recipeId!),
+      )];
+
+      if (recipeIds.length === 0) {
+        setMealPlanError('No recipes found in the meal plan for this week. Assign recipes to meal slots on the Meal Plan page first.');
+        return;
+      }
+
+      const allIngredients: RecipeIngredient[] = [];
+      for (const recipeId of recipeIds) {
+        const ings = await getIngredients(recipeId);
+        allIngredients.push(...ings);
+      }
+
+      const aggregated = aggregateIngredients(allIngredients, selectedStore);
+      setGeneratedItems(aggregated);
+    } catch (err) {
+      setMealPlanError(err instanceof Error ? err.message : 'Failed to generate items from meal plan');
+    } finally {
+      setMealPlanGenerating(false);
+    }
+  };
+
   const handleSave = () => {
-    const list = createShoppingList(selectedStore, selectedItemObjects, listName || undefined);
-    list.status = 'active';
+    let list: ShoppingList;
+    if (step !== 'items' && generatedItems.length > 0) {
+      // Meal-plan flow — build list directly from aggregated items
+      const weekOf = getMondayOf();
+      const now = new Date().toISOString();
+      list = {
+        id: generateId(),
+        name: listName || `Week of ${formatDate(weekOf)} — ${storeLabel(selectedStore)} (Meal Plan)`,
+        weekOf,
+        store: selectedStore,
+        items: generatedItems,
+        status: 'active',
+        createdAt: now,
+        updatedAt: now,
+      };
+    } else {
+      list = createShoppingList(selectedStore, selectedItemObjects, listName || undefined);
+      list.status = 'active';
+    }
     onAdd(list);
     navigate(`/list/${list.id}`);
   };
 
   return (
     <div className="max-w-2xl mx-auto">
-      {/* Step indicator */}
-      <div className="flex items-center gap-2 mb-6">
-        {(['store', 'items', 'review'] as Step[]).map((s, idx) => (
-          <div key={s} className="flex items-center gap-2">
-            <div
-              className={`w-8 h-8 rounded-full flex items-center justify-center text-sm font-bold transition-colors ${
-                step === s
-                  ? 'bg-sams text-white'
-                  : idx < (['store', 'items', 'review'] as Step[]).indexOf(step)
-                  ? 'bg-green-500 text-white'
-                  : 'bg-brand-border text-brand-muted'
-              }`}
-            >
-              {idx + 1}
-            </div>
-            <span className={`text-sm hidden sm:block ${step === s ? 'font-semibold' : 'text-brand-muted'}`}>
-              {s === 'store' ? 'Choose Store' : s === 'items' ? 'Select Items' : 'Review & Save'}
-            </span>
-            {idx < 2 && <div className="w-8 h-0.5 bg-brand-border" />}
+      {/* Step indicator — adapts to normal vs. meal-plan flow */}
+      {(() => {
+        const visibleSteps: Step[] = step === 'meal-plan' || (step === 'review' && generatedItems.length > 0 && !selectedItems.size)
+          ? ['store', 'meal-plan', 'review']
+          : ['store', 'items', 'review'];
+        return (
+          <div className="flex items-center gap-2 mb-6">
+            {visibleSteps.map((s, idx) => (
+              <div key={s} className="flex items-center gap-2">
+                <div
+                  className={`w-8 h-8 rounded-full flex items-center justify-center text-sm font-bold transition-colors ${
+                    step === s
+                      ? 'bg-sams text-white'
+                      : idx < visibleSteps.indexOf(step)
+                      ? 'bg-green-500 text-white'
+                      : 'bg-brand-border text-brand-muted'
+                  }`}
+                >
+                  {idx + 1}
+                </div>
+                <span className={`text-sm hidden sm:block ${step === s ? 'font-semibold' : 'text-brand-muted'}`}>
+                  {s === 'store' ? 'Choose Store' : s === 'meal-plan' ? 'Meal Plan' : s === 'items' ? 'Select Items' : 'Review & Save'}
+                </span>
+                {idx < 2 && <div className="w-8 h-0.5 bg-brand-border" />}
+              </div>
+            ))}
           </div>
-        ))}
-      </div>
+        );
+      })()}
 
       {/* Step 1: Choose Store */}
       {step === 'store' && (
@@ -123,10 +263,147 @@ export default function NewList({ state, onAdd }: NewListProps) {
           >
             Next: Select Items →
           </button>
+          <div className="relative">
+            <div className="absolute inset-0 flex items-center">
+              <div className="w-full border-t border-brand-border" />
+            </div>
+            <div className="relative flex justify-center text-xs">
+              <span className="bg-white px-2 text-brand-muted">or</span>
+            </div>
+          </div>
+          <button
+            onClick={() => {
+              setGeneratedItems([]);
+              setMealPlanError(null);
+              setStep('meal-plan');
+            }}
+            className="w-full border-2 border-dashed border-ht text-ht py-3 rounded-lg font-semibold hover:bg-ht-light transition-colors"
+          >
+            📅 Generate from meal plan
+          </button>
         </div>
       )}
 
       {/* Step 2: Select Items */}
+      {/* Step 2 (meal-plan flow): Generate from meal plan */}
+      {step === 'meal-plan' && (
+        <div className="space-y-4">
+          <div className="flex items-center justify-between">
+            <h1 className="text-2xl font-bold">Generate from Meal Plan</h1>
+            <StoreBadge store={selectedStore} size="md" />
+          </div>
+
+          {/* Week picker */}
+          <div className="flex items-center gap-3">
+            <button
+              onClick={() => { setMealPlanWeekOf(w => shiftWeek(w, -1)); setGeneratedItems([]); setMealPlanError(null); }}
+              className="p-2 rounded-lg border border-brand-border hover:bg-brand-bg transition-colors text-brand-muted hover:text-brand-text"
+              aria-label="Previous week"
+            >
+              ‹
+            </button>
+            <div className="flex-1 text-center">
+              <span className="font-semibold text-brand-text text-sm">{formatWeekRange(mealPlanWeekOf)}</span>
+            </div>
+            <button
+              onClick={() => { setMealPlanWeekOf(w => shiftWeek(w, 1)); setGeneratedItems([]); setMealPlanError(null); }}
+              className="p-2 rounded-lg border border-brand-border hover:bg-brand-bg transition-colors text-brand-muted hover:text-brand-text"
+              aria-label="Next week"
+            >
+              ›
+            </button>
+            <button
+              onClick={() => { setMealPlanWeekOf(getMondayOf()); setGeneratedItems([]); setMealPlanError(null); }}
+              className="px-3 py-2 text-xs font-medium border border-brand-border rounded-lg hover:bg-brand-bg text-brand-muted hover:text-brand-text transition-colors"
+            >
+              Today
+            </button>
+          </div>
+
+          {/* Meal plan preview */}
+          {(() => {
+            const entries = weekEntries(mealPlanWeekOf).filter(e => e.recipeId);
+            const uniqueRecipes = [...new Map(entries.map(e => [e.recipeId!, e.recipeName ?? e.recipeId!])).entries()];
+            return uniqueRecipes.length > 0 ? (
+              <div className="bg-brand-bg rounded-xl border border-brand-border p-4">
+                <p className="text-xs font-medium text-brand-muted mb-2">
+                  🍳 {uniqueRecipes.length} recipe{uniqueRecipes.length !== 1 ? 's' : ''} planned this week
+                </p>
+                <ul className="space-y-1">
+                  {uniqueRecipes.map(([id, name]) => (
+                    <li key={id} className="text-sm text-brand-text">• {name}</li>
+                  ))}
+                </ul>
+              </div>
+            ) : (
+              <div className="bg-brand-bg rounded-xl border border-brand-border p-4 text-center text-sm text-brand-muted">
+                No recipes found for this week. Assign recipes to meal slots on the{' '}
+                <a href="/meal-plan" className="text-ht underline">Meal Plan</a> page.
+              </div>
+            );
+          })()}
+
+          {/* Generate button */}
+          <button
+            onClick={generateFromMealPlan}
+            disabled={mealPlanGenerating || weekEntries(mealPlanWeekOf).filter(e => e.recipeId).length === 0}
+            className="w-full bg-ht text-white py-3 rounded-lg font-semibold hover:bg-ht-dark transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            {mealPlanGenerating ? '⏳ Fetching ingredients…' : '🔄 Generate Shopping List'}
+          </button>
+
+          {/* Error */}
+          {mealPlanError && (
+            <p className="text-sm text-red-600 bg-red-50 border border-red-200 rounded-lg px-4 py-3">{mealPlanError}</p>
+          )}
+
+          {/* Aggregated preview */}
+          {generatedItems.length > 0 && (
+            <div className="space-y-3">
+              <div className="bg-white rounded-xl border border-brand-border shadow-sm overflow-hidden">
+                <div className="px-4 py-3 bg-brand-bg border-b border-brand-border flex justify-between">
+                  <span className="font-semibold text-sm">{generatedItems.length} items</span>
+                  <span className="text-sm text-brand-muted">
+                    Est. total: ${generatedItems.reduce((s, i) => s + i.approxCost * i.quantity, 0).toFixed(2)}
+                  </span>
+                </div>
+                <div className="divide-y divide-brand-border max-h-64 overflow-y-auto">
+                  {generatedItems.map(item => (
+                    <div key={item.id} className="px-4 py-2.5 flex justify-between items-center">
+                      <div>
+                        <span className="text-sm font-medium text-brand-text">{item.name}</span>
+                        {item.category === 'Custom' && (
+                          <span className="ml-2 text-xs text-brand-muted italic">custom</span>
+                        )}
+                      </div>
+                      <span className="text-xs text-brand-muted">
+                        {item.quantity} {item.unit}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+          )}
+
+          <div className="flex gap-3">
+            <button
+              onClick={() => setStep('store')}
+              className="px-4 py-2.5 border border-brand-border rounded-lg text-sm font-medium hover:bg-brand-bg transition-colors"
+            >
+              ← Back
+            </button>
+            <button
+              onClick={() => setStep('review')}
+              disabled={generatedItems.length === 0}
+              className="flex-1 bg-sams text-white py-2.5 rounded-lg font-semibold hover:bg-sams-dark transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              Review {generatedItems.length > 0 ? `${generatedItems.length} Items` : 'Items'} →
+            </button>
+          </div>
+        </div>
+      )}
+
       {step === 'items' && (
         <div className="space-y-4">
           <div className="flex items-center justify-between">
@@ -232,32 +509,61 @@ export default function NewList({ state, onAdd }: NewListProps) {
             onChange={e => setListName(e.target.value)}
             className="w-full border border-brand-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-sams"
           />
-          <div className="bg-white rounded-xl border border-brand-border shadow-sm overflow-hidden">
-            <div className="px-4 py-3 bg-brand-bg border-b border-brand-border flex justify-between">
-              <span className="font-semibold text-sm">{selectedItemObjects.length} items</span>
-              <span className="text-sm text-brand-muted">
-                Est. total: ${selectedItemObjects.reduce((s, i) => s + i.approxCost * i.parStock, 0).toFixed(2)}
-              </span>
-            </div>
-            <div className="divide-y divide-brand-border max-h-64 overflow-y-auto">
-              {selectedItemObjects.map(item => (
-                <div key={item.id} className="px-4 py-2.5 flex justify-between items-center">
-                  <div>
-                    <span className="text-sm font-medium text-brand-text">{item.name}</span>
-                    <StoreBadge store={item.store} />
+          {/* Meal-plan flow: show generated items */}
+          {generatedItems.length > 0 && !selectedItems.size ? (
+            <div className="bg-white rounded-xl border border-brand-border shadow-sm overflow-hidden">
+              <div className="px-4 py-3 bg-brand-bg border-b border-brand-border flex justify-between">
+                <span className="font-semibold text-sm">{generatedItems.length} items</span>
+                <span className="text-sm text-brand-muted">
+                  Est. total: ${generatedItems.reduce((s, i) => s + i.approxCost * i.quantity, 0).toFixed(2)}
+                </span>
+              </div>
+              <div className="divide-y divide-brand-border max-h-64 overflow-y-auto">
+                {generatedItems.map(item => (
+                  <div key={item.id} className="px-4 py-2.5 flex justify-between items-center">
+                    <div>
+                      <span className="text-sm font-medium text-brand-text">{item.name}</span>
+                      {item.category !== 'Custom' && <StoreBadge store={item.store} />}
+                      {item.category === 'Custom' && (
+                        <span className="ml-2 text-xs text-brand-muted italic">custom</span>
+                      )}
+                    </div>
+                    <div className="text-right text-xs text-brand-muted">
+                      {item.quantity} {item.unit}{item.approxCost > 0 && <><br />~${(item.approxCost * item.quantity).toFixed(2)}</>}
+                    </div>
                   </div>
-                  <div className="text-right text-xs text-brand-muted">
-                    {item.parStock} {item.unit}<br />
-                    ~${(item.approxCost * item.parStock).toFixed(2)}
-                  </div>
-                </div>
-              ))}
+                ))}
+              </div>
             </div>
-          </div>
+          ) : (
+            /* Normal flow: show selected catalog items */
+            <div className="bg-white rounded-xl border border-brand-border shadow-sm overflow-hidden">
+              <div className="px-4 py-3 bg-brand-bg border-b border-brand-border flex justify-between">
+                <span className="font-semibold text-sm">{selectedItemObjects.length} items</span>
+                <span className="text-sm text-brand-muted">
+                  Est. total: ${selectedItemObjects.reduce((s, i) => s + i.approxCost * i.parStock, 0).toFixed(2)}
+                </span>
+              </div>
+              <div className="divide-y divide-brand-border max-h-64 overflow-y-auto">
+                {selectedItemObjects.map(item => (
+                  <div key={item.id} className="px-4 py-2.5 flex justify-between items-center">
+                    <div>
+                      <span className="text-sm font-medium text-brand-text">{item.name}</span>
+                      <StoreBadge store={item.store} />
+                    </div>
+                    <div className="text-right text-xs text-brand-muted">
+                      {item.parStock} {item.unit}<br />
+                      ~${(item.approxCost * item.parStock).toFixed(2)}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
 
           <div className="flex gap-3">
             <button
-              onClick={() => setStep('items')}
+              onClick={() => setStep(generatedItems.length > 0 && !selectedItems.size ? 'meal-plan' : 'items')}
               className="px-4 py-2.5 border border-brand-border rounded-lg text-sm font-medium hover:bg-brand-bg transition-colors"
             >
               ← Back

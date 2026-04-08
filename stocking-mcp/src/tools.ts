@@ -575,6 +575,28 @@ export const TOOL_DEFINITIONS = [
       },
     },
   },
+  {
+    name: 'generate_list_from_plan',
+    description:
+      'Aggregates ingredients from all recipes planned for a given week, '
+      + 'combining duplicate ingredients where units match (e.g. two recipes both needing chicken). '
+      + 'Catalog-linked ingredients are resolved to master catalog items; '
+      + 'ingredients without a catalog link are included as custom free-text items. '
+      + 'Empty meal slots (no recipe assigned) are silently skipped. '
+      + 'Returns the aggregated item list in create_shopping_list-compatible format '
+      + 'as a preview/confirmation step — no list is created yet. '
+      + 'Call create_shopping_list with the returned items to finalise.',
+    inputSchema: {
+      type: 'object',
+      required: ['week_of', 'store'],
+      properties: {
+        week_of:   { type: 'string', description: 'ISO date of any day in the target week (normalised to Monday)' },
+        store:     { type: 'string', enum: ['sams', 'ht', 'both'], description: 'Target store for the shopping list' },
+        plan_type: { type: 'string', enum: ['family', 'individual'], description: 'Plan type to aggregate from (defaults to "family")' },
+        member_id: { type: 'string', description: 'Required when plan_type is "individual"' },
+      },
+    },
+  },
 ];
 
 // ── Handler ───────────────────────────────────────────────────────────────────
@@ -1182,6 +1204,140 @@ async function dispatch(
         success: true,
         deleted_entry_id: result.id,
         plan_id: args['plan_id'] as string | undefined,
+      };
+    }
+
+    case 'generate_list_from_plan': {
+      const weekOf   = toMonday(args['week_of'] as string);
+      const store    = args['store'] as string;
+      const planType = (args['plan_type'] as string | undefined) ?? 'family';
+      const memberId = args['member_id'] as string | undefined;
+
+      // Find the meal plan for this week
+      const plans = await gql.listMealPlans(1, weekOf, planType, memberId);
+      if (plans.length === 0) {
+        return {
+          error: 'no_plan',
+          week_of: weekOf,
+          plan_type: planType,
+          message: `No ${planType} meal plan found for week of ${weekOf}. Create one with create_meal_plan first.`,
+        };
+      }
+
+      const plan = plans[0] as Record<string, unknown>;
+      const planData = await gql.getMealPlan(plan['id'] as string) as {
+        entries: Array<{
+          recipeId?: string | null;
+          dayOfWeek: string;
+          mealType: string;
+        }>;
+      };
+
+      // Collect unique recipe IDs — skip slots without a recipe
+      const recipeIds = [...new Set(
+        planData.entries
+          .filter(e => e.recipeId)
+          .map(e => e.recipeId as string),
+      )];
+
+      if (recipeIds.length === 0) {
+        return {
+          week_of: weekOf,
+          plan_type: planType,
+          plan_id: plan['id'],
+          recipe_count: 0,
+          item_count: 0,
+          items: [],
+          message: 'No recipes found in the meal plan for this week. Assign recipes to meal slots (via upsert_meal_entry) and try again.',
+        };
+      }
+
+      // Fetch ingredients for each recipe
+      interface MealIngredient {
+        name: string;
+        amount?: number | null;
+        unit?: string | null;
+        catalogItemId?: string | null;
+        notes?: string | null;
+      }
+      interface RecipeData {
+        name: string;
+        ingredients: MealIngredient[];
+      }
+
+      const recipeNames: string[] = [];
+      // Map: key → aggregated item
+      const aggregated = new Map<string, {
+        item_id: string;
+        name?: string;
+        quantity: number;
+        unit: string;
+      }>();
+
+      for (const recipeId of recipeIds) {
+        const data = await gql.getRecipe(recipeId) as RecipeData;
+        recipeNames.push(data.name);
+
+        for (const ing of data.ingredients) {
+          const amount = ing.amount ?? 1;
+
+          if (ing.catalogItemId) {
+            const cat = catalog.find(c => c.id === ing.catalogItemId);
+            if (cat) {
+              const key = `catalog:${ing.catalogItemId}`;
+              const existing = aggregated.get(key);
+              if (existing) {
+                existing.quantity = Math.round((existing.quantity + amount) * 1000) / 1000;
+              } else {
+                aggregated.set(key, {
+                  item_id: cat.id,
+                  quantity: amount,
+                  unit: ing.unit ?? cat.unit,
+                });
+              }
+              continue;
+            }
+          }
+          // No catalog match → custom item, keyed by name + unit
+          const unit = (ing.unit ?? '').toLowerCase();
+          const key = `custom:${ing.name.toLowerCase()}:${unit}`;
+          const existing = aggregated.get(key);
+          if (existing) {
+            existing.quantity = Math.round((existing.quantity + amount) * 1000) / 1000;
+          } else {
+            aggregated.set(key, {
+              item_id: 'custom',
+              name: ing.name,
+              quantity: amount,
+              unit: ing.unit ?? 'each',
+            });
+          }
+        }
+      }
+
+      const items = Array.from(aggregated.values()).map(item => ({
+        item_id: item.item_id,
+        ...(item.item_id === 'custom' ? { name: item.name } : {}),
+        quantity: item.quantity,
+        unit: item.unit,
+      }));
+
+      const slotsWithRecipes = planData.entries.filter(e => e.recipeId).length;
+      return {
+        week_of:      weekOf,
+        store,
+        plan_type:    planType,
+        plan_id:      plan['id'],
+        recipe_count: recipeIds.length,
+        recipes:      recipeNames,
+        slot_count:   slotsWithRecipes,
+        item_count:   items.length,
+        items,
+        message:
+          `Found ${recipeIds.length} unique recipe(s) across ${slotsWithRecipes} meal slot(s). `
+          + `Aggregated ${items.length} item(s). `
+          + `Review the list above and call create_shopping_list with store="${store}", `
+          + `week_of="${weekOf}", and these items to create the list.`,
       };
     }
 

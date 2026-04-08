@@ -85,6 +85,7 @@ Claude will confirm the `stocking-mcp` server is connected and list the availabl
 |---|---|
 | `get_due_store` | Which store is due this week per bi-weekly cadence |
 | `suggest_items` | Item suggestions ranked by urgency (overdue → due → approaching) |
+| `generate_list_from_plan` | Aggregate ingredients from a week's meal plan (preview only — no list created yet) |
 | `create_shopping_list` | Write a full list to DynamoDB — appears live in the app |
 | `get_shopping_lists` | Read recent lists with status and totals |
 | `get_list_items` | Full line items for a list, grouped by category |
@@ -100,6 +101,34 @@ Claude will confirm the `stocking-mcp` server is connected and list the availabl
 | `update_meal_entry` | Set or update a single day/mealType slot in a plan. Looks up an existing entry for the given slot and updates it, or creates a new one if the slot is empty |
 | `delete_meal_entry` | Remove a single meal entry from a plan by its entry ID |
 | `list_meal_plans` | List weeks that have plans, with optional filters by week, type, or member |
+
+#### Shopping tool signatures (generate_list_from_plan)
+
+```ts
+generate_list_from_plan({
+  week_of: string,           // any ISO date in the target week (normalised to Monday)
+  store: 'sams' | 'ht' | 'both',
+  plan_type?: 'family' | 'individual',  // defaults to 'family'
+  member_id?: string,        // required when plan_type is 'individual'
+})
+→ {
+    week_of, store, plan_type, plan_id,
+    recipe_count,             // unique recipes found
+    recipes: string[],        // recipe names
+    slot_count,               // meal slots that had a recipe
+    item_count,
+    items: Array<{
+      item_id: string,        // catalog ID, or 'custom' for free-text items
+      name?: string,          // only present when item_id === 'custom'
+      quantity: number,
+      unit: string,
+    }>,
+    message,
+  }
+  | { error: 'no_plan', message }
+```
+
+> **Workflow**: call `generate_list_from_plan` → review items → call `create_shopping_list` with the same `store`, `week_of`, and `items` array to create the list.
 
 #### Meal plan tool signatures
 
