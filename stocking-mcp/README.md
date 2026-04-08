@@ -10,6 +10,8 @@ Once connected, you can say things like:
 - *"What HT items are getting low?"*
 - *"Mark the bacon as checked on my active list"*
 - *"Complete last week's list — I spent $284"*
+- *"Create a family meal plan for this week"*
+- *"Set Monday dinner to the chicken stir-fry recipe"*
 
 The list writes directly to DynamoDB and appears live in the Stocking app.
 
@@ -77,6 +79,8 @@ Claude will confirm the `stocking-mcp` server is connected and list the availabl
 
 ## Available tools
 
+### Shopping
+
 | Tool | What it does |
 |---|---|
 | `get_due_store` | Which store is due this week per bi-weekly cadence |
@@ -86,6 +90,42 @@ Claude will confirm the `stocking-mcp` server is connected and list the availabl
 | `get_list_items` | Full line items for a list, grouped by category |
 | `update_list_item` | Check/uncheck an item (use while shopping) |
 | `complete_list` | Mark done, record actual spend for history |
+
+### Meal planning
+
+| Tool | What it does |
+|---|---|
+| `create_meal_plan` | Create a meal plan for a given week. **Idempotent** — returns the existing plan if one already exists for the same week, type, and member |
+| `get_meal_plan` | Fetch a plan by `week_of` + `type` (+ `member_id` for individual plans), including all entries sorted by day and meal. Returns a `not_found` error when no plan exists for that week |
+| `update_meal_entry` | Set or update a single day/mealType slot in a plan. Looks up an existing entry for the given slot and updates it, or creates a new one if the slot is empty |
+| `delete_meal_entry` | Remove a single meal entry from a plan by its entry ID |
+| `list_meal_plans` | List weeks that have plans, with optional filters by week, type, or member |
+
+#### Meal plan tool signatures
+
+```ts
+create_meal_plan({ week_of: string, type: 'family' | 'individual', member_id?: string })
+  → { plan_id, week_of, type, member_id, already_existed, message }
+
+get_meal_plan({ week_of: string, type: 'family' | 'individual', member_id?: string })
+  OR
+get_meal_plan({ plan_id: string })
+  → MealPlan & { entries: MealEntry[] }   |   { error: 'not_found', ... }
+
+update_meal_entry({ plan_id: string, day_of_week: string, meal_type: string, recipe_id?: string, label?: string, notes?: string })
+  → { success, entry_id, plan_id, action: 'created' | 'updated', entry? }
+
+delete_meal_entry({ entry_id: string, plan_id?: string })
+  → { success, deleted_entry_id }
+
+list_meal_plans({ limit?: number, week_of?: string, type?: string, member_id?: string })
+  → MealPlan[]
+```
+
+#### Day and meal type values
+
+- **day_of_week**: `sun` | `mon` | `tue` | `wed` | `thu` | `fri` | `sat`
+- **meal_type**: `breakfast` | `lunch` | `dinner`
 
 ---
 
@@ -109,3 +149,4 @@ stocking-mcp/
 ## Keeping catalog.ts in sync
 
 `stocking-mcp/src/catalog.ts` mirrors `src/data/masterCatalog.ts`. When you add or update items in the app catalog, make the same change here. A future improvement would be to share both from a single source file via a monorepo workspace.
+
