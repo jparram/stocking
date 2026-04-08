@@ -1213,7 +1213,6 @@ async function dispatch(
       const planType = (args['plan_type'] as string | undefined) ?? 'family';
       const memberId = args['member_id'] as string | undefined;
 
-      // Validate plan_type / member_id consistency (mirrors create_meal_plan)
       if (planType === 'individual' && !memberId) {
         return {
           error: 'member_id_required',
@@ -1221,6 +1220,7 @@ async function dispatch(
           message: 'member_id is required when plan_type is "individual".',
         };
       }
+
       if (planType === 'family' && memberId) {
         return {
           error: 'member_id_not_allowed',
@@ -1228,7 +1228,6 @@ async function dispatch(
           message: 'member_id must not be provided when plan_type is "family".',
         };
       }
-
       // Find the meal plan for this week
       const plans = await gql.listMealPlans(1, weekOf, planType, memberId);
       if (plans.length === 0) {
@@ -1296,7 +1295,7 @@ async function dispatch(
       }>();
 
       const recipes = await Promise.all(
-        recipeIds.map(id => gql.getRecipe(id) as Promise<RecipeData>),
+        recipeIds.map(async (recipeId) => await gql.getRecipe(recipeId) as RecipeData),
       );
 
       for (const data of recipes) {
