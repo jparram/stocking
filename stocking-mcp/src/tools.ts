@@ -1213,6 +1213,21 @@ async function dispatch(
       const planType = (args['plan_type'] as string | undefined) ?? 'family';
       const memberId = args['member_id'] as string | undefined;
 
+      if (planType === 'individual' && !memberId) {
+        return {
+          error: 'member_id_required',
+          plan_type: planType,
+          message: 'member_id is required when plan_type is "individual".',
+        };
+      }
+
+      if (planType === 'family' && memberId) {
+        return {
+          error: 'member_id_not_allowed',
+          plan_type: planType,
+          message: 'member_id must not be provided when plan_type is "family".',
+        };
+      }
       // Find the meal plan for this week
       const plans = await gql.listMealPlans(1, weekOf, planType, memberId);
       if (plans.length === 0) {
