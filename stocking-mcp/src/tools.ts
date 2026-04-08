@@ -1294,8 +1294,11 @@ async function dispatch(
         unit: string;
       }>();
 
-      for (const recipeId of recipeIds) {
-        const data = await gql.getRecipe(recipeId) as RecipeData;
+      const recipes = await Promise.all(
+        recipeIds.map(async (recipeId) => await gql.getRecipe(recipeId) as RecipeData),
+      );
+
+      for (const data of recipes) {
         recipeNames.push(data.name);
 
         for (const ing of data.ingredients) {
