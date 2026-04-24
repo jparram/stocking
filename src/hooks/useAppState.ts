@@ -78,15 +78,17 @@ export function useAppState() {
           // and paginate until nextToken is exhausted.
           const allItems: Schema['ShoppingListItem']['type'][] = [];
           let nextToken: string | null | undefined = undefined;
-          do {
-            const page = await client.models.ShoppingListItem.list({
-              filter: { listId: { eq: list.id } },
-              limit: 1000,
-              ...(nextToken ? { nextToken } : {}),
-            });
+          for (;;) {
+            const page: { data: Schema['ShoppingListItem']['type'][]; nextToken?: string | null } =
+              await client.models.ShoppingListItem.list({
+                filter: { listId: { eq: list.id } },
+                limit: 1000,
+                ...(nextToken ? { nextToken } : {}),
+              });
             allItems.push(...page.data);
+            if (!page.nextToken) break;
             nextToken = page.nextToken;
-          } while (nextToken);
+          }
           return mapList(list, allItems.map(mapItem));
         })
       );
