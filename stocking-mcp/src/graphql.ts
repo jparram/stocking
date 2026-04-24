@@ -86,21 +86,34 @@ function sortMealEntries(
   });
 }
 
+type AuthProvider =
+  | { type: 'apikey'; apiKey: string }
+  | { type: 'cognito'; getToken: () => Promise<string> };
+
 export class GraphQLClient {
+  private auth: AuthProvider;
+
   constructor(
     private endpoint: string,
-    private apiKey: string
-  ) {}
+    auth: AuthProvider
+  ) {
+    this.auth = auth;
+  }
 
   private async query<T>(
     gqlQuery: string,
     variables?: Record<string, unknown>
   ): Promise<T> {
+    const authHeader: Record<string, string> =
+      this.auth.type === 'apikey'
+        ? { 'x-api-key': this.auth.apiKey }
+        : { Authorization: `Bearer ${await this.auth.getToken()}` };
+
     const res = await fetch(this.endpoint, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'x-api-key': this.apiKey,
+        ...authHeader,
       },
       body: JSON.stringify({ query: gqlQuery, variables }),
     });
@@ -194,6 +207,9 @@ export class GraphQLClient {
     store?: string,
     status?: string
   ): Promise<unknown[]> {
+    // Fetch a large page from DynamoDB so client-side filters and slicing
+    // operate on a representative set, not just the first N records scanned.
+    const scanLimit = Math.max(limit * 20, 100);
     const data = await this.query<{
       listShoppingLists: { items: unknown[] };
     }>(
@@ -205,10 +221,14 @@ export class GraphQLClient {
           }
         }
       }`,
-      { limit }
+      { limit: scanLimit }
     );
 
     let lists = data.listShoppingLists.items as Array<Record<string, unknown>>;
+    // Sort newest first before filtering so slice returns the most recent.
+    lists.sort((a, b) =>
+      String(b['createdAt'] ?? '').localeCompare(String(a['createdAt'] ?? ''))
+    );
     if (store)  lists = lists.filter((l) => l.store === store);
     if (status) lists = lists.filter((l) => l.status === status);
     return lists.slice(0, limit);

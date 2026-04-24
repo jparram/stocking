@@ -73,10 +73,19 @@ export function useAppState() {
 
       const listsWithItems = await Promise.all(
         rawLists.map(async list => {
-          const { data: rawItems } = await client.models.ShoppingListItem.list({
-            filter: { listId: { eq: list.id } },
-          });
-          return mapList(list, rawItems.map(mapItem));
+          // DynamoDB applies the page limit before the filter, so a single page
+          // may return fewer matching items than exist. Paginate until exhausted.
+          const allItems: Schema['ShoppingListItem']['type'][] = [];
+          let nextToken: string | null | undefined = undefined;
+          do {
+            const page = await client.models.ShoppingListItem.list({
+              filter: { listId: { eq: list.id } },
+              ...(nextToken ? { nextToken } : {}),
+            });
+            allItems.push(...page.data);
+            nextToken = page.nextToken;
+          } while (nextToken);
+          return mapList(list, allItems.map(mapItem));
         })
       );
 

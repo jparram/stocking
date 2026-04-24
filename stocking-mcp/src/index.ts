@@ -27,7 +27,7 @@ const server = new Server(
 
 const gql = new GraphQLClient(
   process.env['APPSYNC_ENDPOINT'] ?? '',
-  process.env['APPSYNC_API_KEY']  ?? ''
+  { type: 'apikey', apiKey: process.env['APPSYNC_API_KEY'] ?? '' }
 );
 
 const cadence = new CadenceEngine(

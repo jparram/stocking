@@ -6,12 +6,15 @@
  *
  * Environment variables (set in Lambda console or via GitHub Actions secrets):
  *   APPSYNC_ENDPOINT      — AppSync GraphQL URL
- *   APPSYNC_API_KEY       — AppSync API key
+ *   APPSYNC_API_KEY       — AppSync API key (fallback; used when Cognito creds absent)
  *   CADENCE_START_DATE    — First Sam's Sunday, e.g. 2026-01-04
  *   MCP_AUTH_TOKEN        — Secret token Claude sends in Authorization header
  *   COGNITO_USER_POOL_ID  — Cognito User Pool ID (required for admin endpoints)
+ *   COGNITO_CLIENT_ID     — App client ID (from amplify_outputs.json)
  *   COGNITO_REGION        — AWS region for Cognito (default: us-east-1)
  *   ADMIN_USER_SUB        — (optional) hardcoded admin Cognito sub
+ *   MCP_SERVICE_EMAIL     — Cognito service account email (preferred auth)
+ *   MCP_SERVICE_PASSWORD  — Cognito service account password (preferred auth)
  */
 
 import { CadenceEngine } from './cadence.js';
@@ -24,14 +27,19 @@ import {
   inviteFamilyMember,
   removeFamilyMember,
 } from './cognitoAdmin.js';
+import { cognitoServiceAuthFromEnv } from './cognitoServiceAuth.js';
 
 const cadence = new CadenceEngine(
   process.env['CADENCE_START_DATE'] ?? '2026-01-04'
 );
 
+// Prefer Cognito service account auth; fall back to API key for local dev.
+const serviceAuth = cognitoServiceAuthFromEnv();
 const gql = new GraphQLClient(
   process.env['APPSYNC_ENDPOINT'] ?? '',
-  process.env['APPSYNC_API_KEY']  ?? ''
+  serviceAuth
+    ? { type: 'cognito', getToken: () => serviceAuth.getToken() }
+    : { type: 'apikey', apiKey: process.env['APPSYNC_API_KEY'] ?? '' }
 );
 
 const kroger = process.env['KROGER_CLIENT_ID'] && process.env['KROGER_CLIENT_SECRET']
