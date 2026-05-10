@@ -169,6 +169,50 @@ list_meal_plans({ limit?: number, week_of?: string, type?: string, member_id?: s
 
 ---
 
+## DailyBrief schema (v1.1) — `household` block
+
+For Morning Advantage brief generation, include the following in the DailyBrief payload:
+
+```json
+{
+  "flags": {
+    "has_household": true
+  },
+  "household": {
+    "shopping_due": true,
+    "shopping_store": "Sam's Club",
+    "shopping_list_id": "3a53b369-...",
+    "meal_plan_week_of": "2026-05-10",
+    "today_dinner": "Chicken thighs — baked",
+    "pantry_flags": []
+  }
+}
+```
+
+### `household` field definitions
+
+| Field | Type | Source |
+|---|---|---|
+| `shopping_due` | boolean | Derived from `stocking:get_due_store` (`due_store !== null`) |
+| `shopping_store` | string \| null | Derived from `stocking:get_due_store.due_store` (`sams` \| `ht`) and mapped to display label (`Sam's Club` \| `Harris Teeter`) |
+| `shopping_list_id` | string \| null | Active list ID for the due store, if one exists |
+| `meal_plan_week_of` | string \| null | `stocking:get_meal_plan` for current week (ISO `YYYY-MM-DD`, Monday-of-week) |
+| `today_dinner` | string \| null | Dinner entry from meal plan for today's date |
+| `pantry_flags` | string[] | Reserved — empty for now, future pantry tracking |
+
+### Morning Advantage brief-generator integration
+
+The Work LLM brief generator (Morning Advantage repo) calls Stocking MCP tools at ~5 AM before writing the brief to S3:
+
+1. `stocking:get_due_store` → use `due_store` to derive:
+   - `shopping_due = (due_store !== null)`
+   - `shopping_store = "Sam's Club"` when `due_store = "sams"`, `"Harris Teeter"` when `due_store = "ht"`, else `null`
+2. `stocking:get_meal_plan` for current week → `meal_plan_week_of` + `today_dinner`
+
+Set `flags.has_household = true` whenever the `household` object is present in the brief.
+
+---
+
 ## File structure
 
 ```
@@ -189,4 +233,3 @@ stocking-mcp/
 ## Keeping catalog.ts in sync
 
 `stocking-mcp/src/catalog.ts` mirrors `src/data/masterCatalog.ts`. When you add or update items in the app catalog, make the same change here. A future improvement would be to share both from a single source file via a monorepo workspace.
-
