@@ -1,3 +1,4 @@
+import { useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import type { AppState } from '../types';
 import { formatDate, formatCurrency, listProgress, listTotalCost, storeLabel, getMondayOf } from '../utils';
@@ -5,6 +6,9 @@ import { MASTER_CATALOG } from '../data/masterCatalog';
 import StoreBadge from '../components/StoreBadge';
 import ProgressBar from '../components/ProgressBar';
 import { useRecipes } from '../hooks/useRecipes';
+import { useMealCalendar } from '../hooks/useMealCalendar';
+import TodayCard from '../components/TodayCard';
+import { getDailyBrief, type DailyBrief } from '../utils/dailyBrief';
 
 interface DashboardProps {
   state: AppState;
@@ -13,6 +17,8 @@ interface DashboardProps {
 export default function Dashboard({ state }: DashboardProps) {
   const { lists, weeklyLogs, settings } = state;
   const { recipes } = useRecipes();
+  const { weekEntries } = useMealCalendar();
+  const [brief, setBrief] = useState<DailyBrief | null>(null);
 
   const weekOf = getMondayOf();
   const thisWeekLists = lists.filter(l => l.weekOf === weekOf);
@@ -32,6 +38,37 @@ export default function Dashboard({ state }: DashboardProps) {
 
   const totalSpend = weeklyLogs.slice(0, 4).reduce((s, l) => s + l.totalSpend, 0);
   const avgSpend = weeklyLogs.length > 0 ? totalSpend / Math.min(weeklyLogs.length, 4) : 0;
+  const fallbackDinner = useMemo(() => {
+    const current = weekEntries(weekOf);
+    const dayKeys: Array<'sun' | 'mon' | 'tue' | 'wed' | 'thu' | 'fri' | 'sat'> = ['sun', 'mon', 'tue', 'wed', 'thu', 'fri', 'sat'];
+    const todayDayKey = dayKeys[new Date().getDay()];
+
+    const familyDinner = current.find(
+      e => e.planType === 'family' && e.mealType === 'dinner' && e.dayOfWeek === todayDayKey
+    );
+    const individualDinner = current.find(
+      e => e.planType === 'individual' && e.mealType === 'dinner' && e.dayOfWeek === todayDayKey
+    );
+    const todayDinnerEntry = familyDinner ?? individualDinner;
+    return todayDinnerEntry?.recipeName?.trim() || todayDinnerEntry?.label?.trim() || null;
+  }, [weekEntries, weekOf]);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    (async () => {
+      try {
+        const nextBrief = await getDailyBrief();
+        if (!cancelled) setBrief(nextBrief);
+      } catch {
+        if (!cancelled) setBrief({ available: false, date: '', headline: null, household: null });
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   return (
     <div className="space-y-6">
@@ -52,6 +89,8 @@ export default function Dashboard({ state }: DashboardProps) {
           + New List
         </Link>
       </div>
+
+      {brief?.available && <TodayCard brief={brief} fallbackDinner={fallbackDinner} />}
 
       {/* Quick Stats */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
