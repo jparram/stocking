@@ -24,6 +24,17 @@ interface ListItem {
   notes?: string;
 }
 
+interface MemberRecord {
+  id: unknown;
+  cognitoSub: unknown;
+  displayName: unknown;
+  email: unknown;
+  role: unknown;
+  color: unknown;
+  createdAt: unknown;
+  updatedAt: unknown;
+}
+
 function namesMatch(listName: string, instacartName: string): boolean {
   const normalize = (s: string) =>
     s.toLowerCase().replace(/[^a-z0-9 ]/g, ' ').split(/\s+/).filter(Boolean);
@@ -1433,7 +1444,7 @@ async function dispatch(
     }
 
     case 'list_members': {
-      const raw = await gql.listMembers() as Array<Record<string, unknown>>;
+      const raw = await gql.listMembers() as MemberRecord[];
       // Omit email and cognitoSub — not needed for UI use-cases and are PII
       return raw.map(({ id, displayName, role, color }) => ({ id, displayName, role, color }));
     }
@@ -1442,7 +1453,7 @@ async function dispatch(
       const raw = await gql.getMember(
         args['id'] as string,
         (args['by'] as 'id' | 'cognitoSub' | undefined) ?? 'id'
-      ) as Record<string, unknown>;
+      ) as MemberRecord;
       // Omit email and cognitoSub — not needed for UI use-cases and are PII
       const { id, displayName, role, color, createdAt, updatedAt } = raw;
       return { id, displayName, role, color, createdAt, updatedAt };

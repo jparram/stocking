@@ -17,6 +17,9 @@ import { nextMemberColor } from './useMealCalendar';
 
 type Client = ReturnType<typeof generateClient<Schema>>;
 
+/** AppSync default page size for Member list scans. Households stay well under this. */
+const MEMBER_LIST_LIMIT = 200;
+
 function mapMember(raw: Schema['Member']['type']): Member {
   return {
     id:          raw.id,
@@ -70,7 +73,7 @@ export function useMembers() {
         const client = getClient();
 
         // Load all members (with a generous limit; household is typically < 20)
-        const { data: raw = [] } = await client.models.Member.list({ limit: 200 });
+        const { data: raw = [] } = await client.models.Member.list({ limit: MEMBER_LIST_LIMIT });
         const allMembers = raw.map(mapMember);
         if (!cancelled) setMembers(allMembers);
 
@@ -134,7 +137,7 @@ export function useMembers() {
   const loadMembers = useCallback(async () => {
     try {
       const client = getClient();
-      const { data: raw = [] } = await client.models.Member.list({ limit: 200 });
+      const { data: raw = [] } = await client.models.Member.list({ limit: MEMBER_LIST_LIMIT });
       setMembers(raw.map(mapMember));
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load members.');
