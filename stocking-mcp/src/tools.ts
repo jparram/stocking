@@ -637,6 +637,21 @@ export const TOOL_DEFINITIONS = [
       },
     },
   },
+  {
+    name: 'get_daily_brief',
+    description:
+      'Assembles the household block for the Morning Advantage DailyBrief. '
+      + 'Calls get_due_store, get_shopping_lists, and get_meal_plan internally and '
+      + 'returns a pre-assembled household object ready to embed in the brief JSON. '
+      + 'Use this from the brief generator script instead of calling the three tools separately. '
+      + 'Returns available:false when no data is available.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        date: { type: 'string', description: 'ISO date to evaluate (defaults to today)' },
+      },
+    },
+  },
 ];
 
 // ── Handler ───────────────────────────────────────────────────────────────────
@@ -1457,6 +1472,73 @@ async function dispatch(
       // Omit email and cognitoSub — not needed for UI use-cases and are PII
       const { id, displayName, role, color, createdAt, updatedAt } = raw;
       return { id, displayName, role, color, createdAt, updatedAt };
+    }
+
+    case 'get_daily_brief': {
+      const checkDate = args['date'] ? new Date(args['date'] as string) : new Date();
+
+      // 1. Determine which store is due this week
+      const dueStoreResult = cadence.getDueStore(checkDate);
+      const dueStore: 'sams' | 'ht' = dueStoreResult.due_store;
+      const shoppingStoreLabel =
+        dueStore === 'sams' ? "Sam's Club" :
+        dueStore === 'ht'   ? 'Harris Teeter' : null;
+
+      // 2. Find the first active shopping list for the due store
+      let shoppingListId: string | null = null;
+      const activeLists = await gql.listShoppingLists(1, dueStore, 'active') as Array<Record<string, unknown>>;
+      if (activeLists.length > 0) {
+        shoppingListId = activeLists[0]['id'] as string;
+      }
+
+      // 3. Find today's dinner from this week's family meal plan
+      const weekOf = cadence.getMondayOf(checkDate);
+      const DAY_KEYS = ['sun', 'mon', 'tue', 'wed', 'thu', 'fri', 'sat'];
+      const todayDayKey = DAY_KEYS[checkDate.getDay()];
+
+      let mealPlanWeekOf: string | null = null;
+      let todayDinner: string | null = null;
+
+      const plans = await gql.listMealPlans(1, weekOf, 'family', undefined);
+      if (plans.length > 0) {
+        mealPlanWeekOf = weekOf;
+        const plan = plans[0] as Record<string, unknown>;
+        const planData = await gql.getMealPlan(plan['id'] as string) as {
+          entries?: Array<{
+            dayOfWeek: string;
+            mealType: string;
+            label?: string | null;
+            recipeId?: string | null;
+          }>;
+        };
+        const dinnerEntry = (planData.entries ?? []).find(
+          (e) => e.dayOfWeek === todayDayKey && e.mealType === 'dinner'
+        );
+        if (dinnerEntry) {
+          if (dinnerEntry.label) {
+            todayDinner = dinnerEntry.label;
+          } else if (dinnerEntry.recipeId) {
+            // Resolve recipe name when the entry links to a recipe record
+            const recipe = await gql.getRecipe(dinnerEntry.recipeId) as { name?: string };
+            todayDinner = recipe.name ?? null;
+          }
+        }
+      }
+
+      return {
+        available: true,
+        household: {
+          shopping_due:       dueStore !== null,
+          shopping_store:     shoppingStoreLabel,
+          shopping_list_id:   shoppingListId,
+          meal_plan_week_of:  mealPlanWeekOf,
+          today_dinner:       todayDinner,
+          pantry_flags:       [],
+        },
+        flags: {
+          has_household: true,
+        },
+      };
     }
 
     default:
