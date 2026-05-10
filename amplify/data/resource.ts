@@ -133,6 +133,8 @@ const schema = a.schema({
       allow.publicApiKey().to(['create', 'read', 'update', 'delete']),
     ]),
 
+  WorkoutDayType: a.enum(['STRENGTH', 'HIIT', 'REST']),
+
   WorkoutProgram: a
     .model({
       memberId: a.string().required(),
@@ -155,7 +157,7 @@ const schema = a.schema({
       program: a.belongsTo('WorkoutProgram', 'programId'),
       memberId: a.string().required(),
       dayLabel: a.string().required(),
-      type: a.enum(['STRENGTH', 'HIIT', 'REST']),
+      type: a.ref('WorkoutDayType').required(),
       sortOrder: a.integer().required(),
       exercises: a.json(),
     })
