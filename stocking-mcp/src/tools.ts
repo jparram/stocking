@@ -64,15 +64,19 @@ function getDailyBriefBaseUrl(): string {
   return (process.env['DAILY_BRIEF_BASE_URL'] ?? '').trim().replace(/\/+$/, '');
 }
 
+function isPlainObject(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
 function parseHouseholdBlock(
   root: Record<string, unknown>,
   brief: Record<string, unknown>
 ): HouseholdBlock | null {
   const fromRoot = root['household'];
-  if (fromRoot && typeof fromRoot === 'object') return fromRoot as HouseholdBlock;
+  if (isPlainObject(fromRoot)) return fromRoot as HouseholdBlock;
 
   const fromBrief = brief['household'];
-  if (fromBrief && typeof fromBrief === 'object') return fromBrief as HouseholdBlock;
+  if (isPlainObject(fromBrief)) return fromBrief as HouseholdBlock;
 
   return null;
 }
@@ -764,16 +768,20 @@ async function dispatch(
         const response = await fetch(url);
         if (!response.ok) return unavailableBrief(date);
 
-        const raw = await response.json() as Record<string, unknown>;
-        const brief =
-          raw['brief'] && typeof raw['brief'] === 'object'
-            ? (raw['brief'] as Record<string, unknown>)
-            : raw;
+        const parsed = await response.json() as unknown;
+        if (!isPlainObject(parsed)) return unavailableBrief(date);
+        const raw = parsed;
+
+        const briefValue = raw['brief'];
+        if (briefValue !== undefined && !isPlainObject(briefValue)) {
+          return unavailableBrief(date);
+        }
+        const brief = isPlainObject(briefValue) ? briefValue : raw;
         const calendarRaw = brief['calendar'];
         const calendar = Array.isArray(calendarRaw)
           ? calendarRaw.filter(
               (event): event is CalendarEvent =>
-                typeof event === 'object' && event !== null && !Array.isArray(event)
+                isPlainObject(event)
             )
           : [];
 
