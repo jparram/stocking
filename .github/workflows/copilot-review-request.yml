@@ -2,8 +2,6 @@ name: Request Copilot PR Review
 
 # Fires when Copilot SWE Agent opens or reopens a PR.
 # Posts a @Copilot comment to trigger a self-review.
-# Note: Copilot cannot be added as a formal reviewer via the API —
-# the comment mention is the correct trigger mechanism.
 
 on:
   pull_request:
@@ -16,6 +14,7 @@ jobs:
     if: github.event.pull_request.user.login == 'Copilot'
     permissions:
       pull-requests: write
+      issues: write        # required — PR comments use the issues API
 
     steps:
       - name: Post review request comment
