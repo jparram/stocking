@@ -20,8 +20,8 @@ interface RpcResponse {
   error?: { message?: string; code?: number };
 }
 
-export function unavailableDailyBrief(date = ''): DailyBrief {
-  return { available: false, date, headline: null, household: null };
+export function unavailableDailyBrief(date?: string): DailyBrief {
+  return { available: false, date: date ?? '', headline: null, household: null };
 }
 
 export async function getDailyBrief(date?: string): Promise<DailyBrief> {

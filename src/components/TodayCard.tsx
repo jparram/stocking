@@ -1,13 +1,16 @@
 import { useMemo } from 'react';
 import { Link } from 'react-router-dom';
+import { useMealCalendar } from '../hooks/useMealCalendar';
+import { getMondayOf } from '../utils';
 import type { DailyBrief } from '../utils/dailyBrief';
 
 interface TodayCardProps {
   brief: DailyBrief;
-  fallbackDinner?: string | null;
 }
 
-export default function TodayCard({ brief, fallbackDinner }: TodayCardProps) {
+const DAY_KEYS: Array<'sun' | 'mon' | 'tue' | 'wed' | 'thu' | 'fri' | 'sat'> = ['sun', 'mon', 'tue', 'wed', 'thu', 'fri', 'sat'];
+
+function TodayCardContent({ brief, dinner }: { brief: DailyBrief; dinner: string | null }) {
   const dateLabel = useMemo(
     () =>
       new Date().toLocaleDateString('en-US', {
@@ -19,7 +22,6 @@ export default function TodayCard({ brief, fallbackDinner }: TodayCardProps) {
   );
 
   const household = brief.household;
-  const dinner = household?.today_dinner?.trim() || fallbackDinner?.trim() || null;
   const shoppingDue = household?.shopping_due === true;
   const shoppingStore = household?.shopping_store?.trim();
   const shoppingListId = household?.shopping_list_id?.trim();
@@ -56,4 +58,33 @@ export default function TodayCard({ brief, fallbackDinner }: TodayCardProps) {
       )}
     </section>
   );
+}
+
+function TodayDinnerFallback({ brief }: { brief: DailyBrief }) {
+  const { weekEntries } = useMealCalendar();
+  const weekOf = getMondayOf();
+  const todayDayKey = DAY_KEYS[new Date().getDay()];
+
+  const fallbackDinner = useMemo(() => {
+    const current = weekEntries(weekOf);
+    const familyDinner = current.find(
+      e => e.planType === 'family' && e.mealType === 'dinner' && e.dayOfWeek === todayDayKey
+    );
+    const individualDinner = current.find(
+      e => e.planType === 'individual' && e.mealType === 'dinner' && e.dayOfWeek === todayDayKey
+    );
+    const todayDinnerEntry = familyDinner ?? individualDinner;
+    return todayDinnerEntry?.recipeName?.trim() || todayDinnerEntry?.label?.trim() || null;
+  }, [todayDayKey, weekEntries, weekOf]);
+
+  return <TodayCardContent brief={brief} dinner={fallbackDinner} />;
+}
+
+export default function TodayCard({ brief }: TodayCardProps) {
+  const briefDinner = brief.household?.today_dinner?.trim() || null;
+  if (briefDinner) {
+    return <TodayCardContent brief={brief} dinner={briefDinner} />;
+  }
+
+  return <TodayDinnerFallback brief={brief} />;
 }
