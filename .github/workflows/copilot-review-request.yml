@@ -1,8 +1,9 @@
 name: Request Copilot PR Review
 
 # Fires when Copilot SWE Agent opens or reopens a PR.
-# Automatically requests a review from Copilot so the review
-# loop starts without manual intervention.
+# Posts a @Copilot comment to trigger a self-review.
+# Note: Copilot cannot be added as a formal reviewer via the API —
+# the comment mention is the correct trigger mechanism.
 
 on:
   pull_request:
@@ -10,27 +11,14 @@ on:
 
 jobs:
   request-review:
-    name: Request Copilot review
+    name: Post Copilot review request
     runs-on: ubuntu-latest
-    # Only run when the PR was opened by the Copilot SWE Agent bot.
     if: github.event.pull_request.user.login == 'Copilot'
     permissions:
       pull-requests: write
 
     steps:
-      - name: Request review from Copilot
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          PR_NUMBER: ${{ github.event.pull_request.number }}
-          REPO: ${{ github.repository }}
-        run: |
-          gh api \
-            --method POST \
-            -H "Accept: application/vnd.github+json" \
-            /repos/$REPO/pulls/$PR_NUMBER/requested_reviewers \
-            -f 'reviewers[]=${{ github.repository_owner }}'
-
-      - name: Comment to trigger Copilot review
+      - name: Post review request comment
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           PR_NUMBER: ${{ github.event.pull_request.number }}
@@ -38,4 +26,4 @@ jobs:
         run: |
           gh pr comment $PR_NUMBER \
             --repo $REPO \
-            --body "@Copilot Please review this PR. Check that the implementation matches the acceptance criteria in the linked issue. Flag any type errors, missing edge cases, or deviations from the existing patterns in the codebase (hooks, AppSync auth, MCP tool registration)."
+            --body "@Copilot Please review this PR. Verify that the implementation matches all acceptance criteria in the linked issue. Flag any type errors, deviations from existing patterns (hooks, AppSync auth directives, MCP tool registration), or missing edge cases."
