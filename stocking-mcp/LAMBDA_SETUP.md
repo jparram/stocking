@@ -70,6 +70,7 @@ aws lambda create-function \
     APPSYNC_ENDPOINT=https://YOUR_ENDPOINT.appsync-api.us-east-1.amazonaws.com/graphql,
     APPSYNC_API_KEY=da2-YOUR_KEY,
     CADENCE_START_DATE=2026-01-04,
+    DAILY_BRIEF_BASE_URL=https://briefs.example.com,
     MCP_AUTH_TOKEN=YOUR_RANDOM_SECRET,
     COGNITO_USER_POOL_ID=us-east-1_XXXXXXXXX,
     COGNITO_REGION=us-east-1,
@@ -77,7 +78,7 @@ aws lambda create-function \
   }'
 ```
 
-Replace placeholder values — `APPSYNC_ENDPOINT` and `APPSYNC_API_KEY` come from `amplify_outputs.json` after an Amplify deploy. `MCP_AUTH_TOKEN` can be any random secret (e.g. `openssl rand -hex 32`). `COGNITO_USER_POOL_ID` comes from `amplify_outputs.json` (`auth.user_pool_id`). `ADMIN_USER_SUB` is the Cognito `sub` of the admin user (find it in the Cognito console or via `aws cognito-idp admin-get-user`); if omitted, admin access is granted to all members of the `admin` Cognito group.
+Replace placeholder values — `APPSYNC_ENDPOINT` and `APPSYNC_API_KEY` come from `amplify_outputs.json` after an Amplify deploy. `DAILY_BRIEF_BASE_URL` should be the CloudFront/base host where DailyBrief files are published. `MCP_AUTH_TOKEN` can be any random secret (e.g. `openssl rand -hex 32`). `COGNITO_USER_POOL_ID` comes from `amplify_outputs.json` (`auth.user_pool_id`). `ADMIN_USER_SUB` is the Cognito `sub` of the admin user (find it in the Cognito console or via `aws cognito-idp admin-get-user`); if omitted, admin access is granted to all members of the `admin` Cognito group.
 
 ---
 

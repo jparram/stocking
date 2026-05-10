@@ -75,6 +75,7 @@ Replace the placeholder values before running:
 - `YOUR_REGION` — e.g. `us-east-1` (match your Amplify region)
 - `YOUR_APPSYNC_ENDPOINT` — from `amplify_outputs.json` or AWS AppSync console
 - `YOUR_APPSYNC_API_KEY` — from `amplify_outputs.json` or AWS AppSync console
+- `YOUR_DAILY_BRIEF_BASE_URL` — Morning Advantage brief host, e.g. `https://briefs.example.com`
 - `YOUR_MCP_AUTH_TOKEN` — any strong random string, e.g. `openssl rand -hex 32`
 
 ```bash
@@ -91,6 +92,7 @@ aws lambda create-function \
     APPSYNC_ENDPOINT=YOUR_APPSYNC_ENDPOINT,
     APPSYNC_API_KEY=YOUR_APPSYNC_API_KEY,
     CADENCE_START_DATE=2026-01-04,
+    DAILY_BRIEF_BASE_URL=YOUR_DAILY_BRIEF_BASE_URL,
     MCP_AUTH_TOKEN=YOUR_MCP_AUTH_TOKEN
   }'
 ```
@@ -314,6 +316,7 @@ Claude.ai Settings matches `MCP_AUTH_TOKEN` exactly.
 | `APPSYNC_ENDPOINT` | Lambda env vars | AppSync GraphQL URL from `amplify_outputs.json` |
 | `APPSYNC_API_KEY` | Lambda env vars | AppSync API key (rotates every 365 days) |
 | `CADENCE_START_DATE` | Lambda env vars | First Sam's Sunday — `2026-01-04` |
+| `DAILY_BRIEF_BASE_URL` | Lambda env vars | Base URL used by `get_daily_brief` (`/briefs/YYYY-MM-DD.json`) |
 | `MCP_AUTH_TOKEN` | Lambda env vars + Claude.ai | Random secret protecting the endpoint |
 | `AWS_ACCESS_KEY_ID` | GitHub secret | Deploy user key from Step 1.6 |
 | `AWS_SECRET_ACCESS_KEY` | GitHub secret | Deploy user secret from Step 1.6 |

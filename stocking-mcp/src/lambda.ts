@@ -8,6 +8,7 @@
  *   APPSYNC_ENDPOINT      — AppSync GraphQL URL
  *   APPSYNC_API_KEY       — AppSync API key (fallback; used when Cognito creds absent)
  *   CADENCE_START_DATE    — First Sam's Sunday, e.g. 2026-01-04
+ *   DAILY_BRIEF_BASE_URL  — Base URL for DailyBrief JSON files, e.g. https://briefs.example.com
  *   MCP_AUTH_TOKEN        — Secret token Claude sends in Authorization header
  *   COGNITO_USER_POOL_ID  — Cognito User Pool ID (required for admin endpoints)
  *   COGNITO_CLIENT_ID     — App client ID (from amplify_outputs.json)

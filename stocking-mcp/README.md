@@ -56,7 +56,7 @@ After deploying, find your credentials in one of two places:
 ```bash
 cd stocking-mcp
 cp .env.example .env
-# Edit .env — fill in APPSYNC_ENDPOINT and APPSYNC_API_KEY
+# Edit .env — fill in APPSYNC_ENDPOINT, APPSYNC_API_KEY, and DAILY_BRIEF_BASE_URL
 npm install
 npm run build
 ```
@@ -84,6 +84,7 @@ Claude will confirm the `stocking-mcp` server is connected and list the availabl
 | Tool | What it does |
 |---|---|
 | `get_due_store` | Which store is due this week per bi-weekly cadence |
+| `get_daily_brief` | Fetch DailyBrief slice for a date (headline, calendar, household) |
 | `suggest_items` | Item suggestions ranked by urgency (overdue → due → approaching) |
 | `generate_list_from_plan` | Aggregate ingredients from a week's meal plan (preview only — no list created yet) |
 | `create_shopping_list` | Write a full list to DynamoDB — appears live in the app |
