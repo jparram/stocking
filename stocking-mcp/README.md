@@ -168,6 +168,22 @@ list_meal_plans({ limit?: number, week_of?: string, type?: string, member_id?: s
 - **day_of_week**: `sun` | `mon` | `tue` | `wed` | `thu` | `fri` | `sat`
 - **meal_type**: `breakfast` | `lunch` | `dinner`
 
+#### `get_daily_brief` tool signature
+
+```ts
+get_daily_brief({ date?: string })
+  → {
+      available: true,
+      date: string,
+      headline: string | null,
+      calendar: CalendarEvent[],
+      household: HouseholdBlock | null,
+    }
+  | { available: false, date: string, headline: null, calendar: [], household: null }
+```
+
+`available: false` is returned when `DAILY_BRIEF_BASE_URL` is not configured or the brief JSON cannot be fetched for the requested date (e.g. brief not yet written for today).
+
 ---
 
 ## DailyBrief schema (v1.1) — `household` block
@@ -203,14 +219,28 @@ For Morning Advantage brief generation, include the following in the DailyBrief 
 
 ### Morning Advantage brief-generator integration
 
-The Work LLM brief generator (Morning Advantage repo) calls Stocking MCP tools at ~5 AM before writing the brief to S3:
+The brief generator (Work LVM, Morning Advantage repo) assembles the `household` block by calling `get_due_store`, `get_shopping_lists`, and `get_meal_plan` from Stocking MCP at ~5 AM, then writes the completed brief to S3 (`briefs/YYYY-MM-DD.json`).
 
-1. `stocking:get_due_store` → use `due_store` to derive:
-   - `shopping_due = (due_store !== null)`
-   - `shopping_store = "Sam's Club"` when `due_store = "sams"`, `"Harris Teeter"` when `due_store = "ht"`, else `null`
-2. `stocking:get_meal_plan` for current week → `meal_plan_week_of` + `today_dinner`
+`stocking:get_daily_brief` is the **read-back** tool — it fetches the written brief from S3 so that Claude or other consumers can inspect it.
 
-Set `flags.has_household = true` whenever the `household` object is present in the brief.
+#### Required environment variables on the LVM host (brief generator)
+
+```bash
+STOCKING_MCP_URL=https://<lambda-function-url>.lambda-url.us-east-1.on.aws/
+STOCKING_MCP_TOKEN=<same bearer token as MCP_AUTH_TOKEN in stocking-mcp/.env>
+```
+
+These are the same credentials used by the Claude.ai connector — no new secrets required.
+
+#### Required environment variable on the MCP server (for `get_daily_brief` read-back)
+
+```bash
+DAILY_BRIEF_BASE_URL=https://<s3-or-cloudfront-url>
+```
+
+#### Failure handling
+
+If any Stocking MCP call fails during brief generation, the `household` block is omitted and `flags.has_household` is set to `false`. The brief still writes to S3. `get_daily_brief` returns `available: false` if the brief cannot be fetched.
 
 ---
 
