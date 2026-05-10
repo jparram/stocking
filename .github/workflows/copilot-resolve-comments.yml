@@ -1,35 +1,3 @@
-name: Copilot Resolve Review Comments
-
-# Fires when a pull_request_review is submitted on a Copilot-authored PR.
-# Posts a comment instructing Copilot to address its own review feedback,
-# which triggers the Copilot SWE Agent to push fixes.
-
-on:
-  pull_request_review:
-    types: [submitted]
-
-jobs:
-  resolve-comments:
-    name: Ask Copilot to resolve comments
-    runs-on: ubuntu-latest
-    permissions:
-      pull-requests: write
-
-    # Only act when:
-    # 1. The review requests changes (not just a comment or approval)
-    # 2. The PR was authored by Copilot
-    if: |
-      github.event.review.state == 'changes_requested' &&
-      github.event.pull_request.user.login == 'Copilot'
-
-    steps:
-      - name: Post resolution request comment
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          PR_NUMBER: ${{ github.event.pull_request.number }}
-          REPO: ${{ github.repository }}
-          REVIEWER: ${{ github.event.review.user.login }}
-        run: |
-          gh pr comment $PR_NUMBER \
-            --repo $REPO \
-            --body "@Copilot A review requesting changes was submitted by @$REVIEWER. Please address all review comments and push the fixes. Once all comments are resolved, re-request review."
+# This workflow was removed — Copilot SWE Agent self-corrects via @Copilot
+# comment mentions and does not submit formal changes_requested reviews,
+# so this trigger never fired. Delete this file.
