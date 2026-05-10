@@ -91,6 +91,7 @@ export interface RecipeIngredient {
 export type DayOfWeek = 'sun' | 'mon' | 'tue' | 'wed' | 'thu' | 'fri' | 'sat';
 export type MealType = 'breakfast' | 'lunch' | 'dinner';
 export type PlanType = 'family' | 'individual';
+export type WorkoutDayType = 'STRENGTH' | 'HIIT' | 'REST';
 
 export interface MealPlan {
   id: string;
@@ -109,6 +110,49 @@ export interface MealEntry {
   recipeId?: string | null; // optional link to a Recipe record
   label?: string | null;    // free-text fallback when no recipe
   notes?: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface WorkoutExerciseSpec {
+  name: string;
+  sets: number;
+  reps: string;   // e.g. "8–10", "45s on / 15s off"
+  rest: string;   // e.g. "90s", "60s between rounds"
+  notes?: string;
+}
+
+export interface WorkoutProgram {
+  id: string;
+  memberId: string;
+  name: string;
+  description?: string;
+  split?: string;
+  isActive: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface WorkoutDay {
+  id: string;
+  programId: string;
+  memberId: string;
+  dayLabel: string;
+  type: WorkoutDayType;
+  sortOrder: number;
+  exercises?: WorkoutExerciseSpec[];
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface WorkoutSession {
+  id: string;
+  memberId: string;
+  programId: string;
+  dayId: string;
+  completedAt: string;   // YYYY-MM-DD
+  durationMinutes?: number;
+  notes?: string;
   createdAt: string;
   updatedAt: string;
 }

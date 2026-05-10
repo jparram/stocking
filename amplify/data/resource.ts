@@ -133,6 +133,60 @@ const schema = a.schema({
       allow.publicApiKey().to(['create', 'read', 'update', 'delete']),
     ]),
 
+  WorkoutProgram: a
+    .model({
+      memberId: a.string().required(),
+      name: a.string().required(),
+      description: a.string(),
+      split: a.string(),
+      isActive: a.boolean().required(),
+      days: a.hasMany('WorkoutDay', 'programId'),
+      sessions: a.hasMany('WorkoutSession', 'programId'),
+    })
+    .authorization(allow => [
+      allow.ownerDefinedIn('memberId'),
+      allow.group('family').to(['read']),
+      allow.publicApiKey().to(['create', 'read']),
+    ]),
+
+  WorkoutDay: a
+    .model({
+      programId: a.id().required(),
+      program: a.belongsTo('WorkoutProgram', 'programId'),
+      memberId: a.string().required(),
+      dayLabel: a.string().required(),
+      type: a.enum(['STRENGTH', 'HIIT', 'REST']),
+      sortOrder: a.integer().required(),
+      exercises: a.json(),
+    })
+    .secondaryIndexes(index => [index('programId').name('byProgram')])
+    .authorization(allow => [
+      allow.ownerDefinedIn('memberId'),
+      allow.group('family').to(['read']),
+      allow.publicApiKey().to(['create', 'read']),
+    ]),
+
+  WorkoutSession: a
+    .model({
+      memberId: a.string().required(),
+      programId: a.id().required(),
+      program: a.belongsTo('WorkoutProgram', 'programId'),
+      dayId: a.id().required(),
+      day: a.belongsTo('WorkoutDay', 'dayId'),
+      completedAt: a.date().required(),
+      durationMinutes: a.integer(),
+      notes: a.string(),
+    })
+    .secondaryIndexes(index => [
+      index('programId').name('byProgram'),
+      index('dayId').name('byDay'),
+    ])
+    .authorization(allow => [
+      allow.ownerDefinedIn('memberId'),
+      allow.group('family').to(['read']),
+      allow.publicApiKey().to(['create', 'read']),
+    ]),
+
   MealEntry: a
     .model({
       planId: a.id().required(),
