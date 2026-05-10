@@ -117,7 +117,7 @@ const schema = a.schema({
       allow.owner(),
       allow.group('family').to(['read']),
       allow.group('admin').to(['read', 'update']),
-      allow.publicApiKey().to(['create', 'read', 'update']),
+      allow.publicApiKey().to(['create', 'read']),
     ]),
 
   MealPlan: a

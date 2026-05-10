@@ -610,18 +610,34 @@ export class GraphQLClient {
 
   // ── LIST MEMBERS ──────────────────────────────────────────────────────────
   async listMembers(): Promise<unknown[]> {
-    const data = await this.query<{
-      listMembers: { items: Array<Record<string, unknown>> };
-    }>(
-      `query ListMembers {
-        listMembers {
-          items {
-            id cognitoSub displayName email role color createdAt updatedAt
+    type ListMembersPage = {
+      listMembers: {
+        items: Array<Record<string, unknown>>;
+        nextToken?: string | null;
+      };
+    };
+
+    const items: Array<Record<string, unknown>> = [];
+    let cursor: string | null | undefined = undefined;
+
+    for (;;) {
+      const page: ListMembersPage = await this.query<ListMembersPage>(
+        `query ListMembers($nextToken: String) {
+          listMembers(limit: 100, nextToken: $nextToken) {
+            items {
+              id cognitoSub displayName email role color createdAt updatedAt
+            }
+            nextToken
           }
-        }
-      }`
-    );
-    return data.listMembers.items;
+        }`,
+        { nextToken: cursor }
+      );
+      items.push(...page.listMembers.items);
+      cursor = page.listMembers.nextToken;
+      if (!cursor) break;
+    }
+
+    return items;
   }
 
   // ── GET MEMBER (by id or cognitoSub) ─────────────────────────────────────

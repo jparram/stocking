@@ -69,8 +69,8 @@ export function useMembers() {
       try {
         const client = getClient();
 
-        // Load all members
-        const { data: raw = [] } = await client.models.Member.list();
+        // Load all members (with a generous limit; household is typically < 20)
+        const { data: raw = [] } = await client.models.Member.list({ limit: 200 });
         const allMembers = raw.map(mapMember);
         if (!cancelled) setMembers(allMembers);
 
@@ -78,13 +78,22 @@ export function useMembers() {
         try {
           const attrs = await fetchUserAttributes();
           const sub   = attrs.sub;
-          const email = attrs.email ?? '';
           if (!sub) return;
 
-          const existing = allMembers.find(m => m.cognitoSub === sub);
+          // Require a non-empty email — skip auto-create if Cognito didn't provide one
+          const email = attrs.email?.trim();
+          if (!email) {
+            console.warn('useMembers: Cognito user has no email attribute — skipping Member auto-create.');
+            return;
+          }
 
-          if (existing) {
-            if (!cancelled) setCurrentMember(existing);
+          // Filter by cognitoSub directly to avoid false-negative from a truncated full-list scan
+          const { data: existing = [] } = await client.models.Member.list({
+            filter: { cognitoSub: { eq: sub } },
+          });
+
+          if (existing.length > 0) {
+            if (!cancelled) setCurrentMember(mapMember(existing[0]));
           } else {
             // First login — derive displayName from email prefix and pick a color
             const displayName = (attrs.preferred_username || email.split('@')[0] || 'Member').trim();
@@ -125,7 +134,7 @@ export function useMembers() {
   const loadMembers = useCallback(async () => {
     try {
       const client = getClient();
-      const { data: raw = [] } = await client.models.Member.list();
+      const { data: raw = [] } = await client.models.Member.list({ limit: 200 });
       setMembers(raw.map(mapMember));
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load members.');

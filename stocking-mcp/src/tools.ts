@@ -603,7 +603,7 @@ export const TOOL_DEFINITIONS = [
     name: 'list_members',
     description:
       'Returns all household Member records. '
-      + 'Each member has a stable memberId, displayName, email, role (admin|member), '
+      + 'Each member has a stable memberId, displayName, role (admin|member), '
       + 'and a color used for per-member calendar color coding. '
       + 'Use this to populate member rows in the meal plan UI or to look up a memberId.',
     inputSchema: {
@@ -615,7 +615,8 @@ export const TOOL_DEFINITIONS = [
     name: 'get_member',
     description:
       'Fetches a single Member record by memberId (id) or by cognitoSub. '
-      + 'Defaults to lookup by id; pass by="cognitoSub" to look up by the Cognito user sub.',
+      + 'Defaults to lookup by id; pass by="cognitoSub" to look up by the Cognito user sub. '
+      + 'Returns id, displayName, role, and color only.',
     inputSchema: {
       type: 'object',
       required: ['id'],
@@ -1431,14 +1432,21 @@ async function dispatch(
       }
     }
 
-    case 'list_members':
-      return gql.listMembers();
+    case 'list_members': {
+      const raw = await gql.listMembers() as Array<Record<string, unknown>>;
+      // Omit email and cognitoSub — not needed for UI use-cases and are PII
+      return raw.map(({ id, displayName, role, color }) => ({ id, displayName, role, color }));
+    }
 
-    case 'get_member':
-      return gql.getMember(
+    case 'get_member': {
+      const raw = await gql.getMember(
         args['id'] as string,
         (args['by'] as 'id' | 'cognitoSub' | undefined) ?? 'id'
-      );
+      ) as Record<string, unknown>;
+      // Omit email and cognitoSub — not needed for UI use-cases and are PII
+      const { id, displayName, role, color, createdAt, updatedAt } = raw;
+      return { id, displayName, role, color, createdAt, updatedAt };
+    }
 
     default:
       throw new Error(`Unknown tool: ${name}`);
