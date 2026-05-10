@@ -1480,9 +1480,8 @@ async function dispatch(
       // 1. Determine which store is due this week
       const dueStoreResult = cadence.getDueStore(checkDate);
       const dueStore: 'sams' | 'ht' = dueStoreResult.due_store;
-      const shoppingStoreLabel =
-        dueStore === 'sams' ? "Sam's Club" :
-        dueStore === 'ht'   ? 'Harris Teeter' : null;
+      const shoppingStoreLabel: string =
+        dueStore === 'sams' ? "Sam's Club" : 'Harris Teeter';
 
       // 2. Find the first active shopping list for the due store
       let shoppingListId: string | null = null;
@@ -1528,7 +1527,7 @@ async function dispatch(
       return {
         available: true,
         household: {
-          shopping_due:       dueStore !== null,
+          shopping_due:       true,
           shopping_store:     shoppingStoreLabel,
           shopping_list_id:   shoppingListId,
           meal_plan_week_of:  mealPlanWeekOf,
