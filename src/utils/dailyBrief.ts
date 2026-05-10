@@ -5,7 +5,9 @@ export interface DailyBriefHousehold {
   shopping_due?: boolean;
   shopping_store?: string | null;
   shopping_list_id?: string | null;
+  meal_plan_week_of?: string | null;
   today_dinner?: string | null;
+  pantry_flags?: string[];
 }
 
 export interface DailyBrief {
