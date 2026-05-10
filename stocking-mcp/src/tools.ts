@@ -35,6 +35,22 @@ interface MemberRecord {
   updatedAt: unknown;
 }
 
+export interface CalendarEvent {
+  [key: string]: unknown;
+}
+
+export interface HouseholdBlock {
+  [key: string]: unknown;
+}
+
+export interface StockingBriefSlice {
+  date: string;
+  headline: string | null;
+  calendar: CalendarEvent[];
+  household: HouseholdBlock | null;
+  available: boolean;
+}
+
 function namesMatch(listName: string, instacartName: string): boolean {
   const normalize = (s: string) =>
     s.toLowerCase().replace(/[^a-z0-9 ]/g, ' ').split(/\s+/).filter(Boolean);
@@ -107,6 +123,19 @@ function resolveItem(
 // ── Tool definitions ──────────────────────────────────────────────────────────
 
 export const TOOL_DEFINITIONS = [
+  {
+    name: 'get_daily_brief',
+    description:
+      'Fetches a DailyBrief JSON by date and returns the Stocking-focused slice '
+      + '(headline, calendar events, and household block). '
+      + 'Returns available=false if the brief cannot be fetched.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        date: { type: 'string', description: 'ISO date (YYYY-MM-DD). Defaults to today.' },
+      },
+    },
+  },
   {
     name: 'get_due_store',
     description:
@@ -676,7 +705,57 @@ async function dispatch(
   catalog: CatalogItem[],
   kroger?: KrogerClient
 ): Promise<unknown> {
+  const toIsoDate = (value?: string): string => {
+    if (!value) return new Date().toISOString().slice(0, 10);
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) {
+      throw new Error(`Invalid date format "${value}". Expected YYYY-MM-DD.`);
+    }
+    return value;
+  };
+
+  const unavailableBrief = (date: string): StockingBriefSlice => ({
+    date,
+    headline: null,
+    calendar: [],
+    household: null,
+    available: false,
+  });
+
   switch (name) {
+
+    case 'get_daily_brief': {
+      const date = toIsoDate(args['date'] as string | undefined);
+      const baseUrl = (process.env['DAILY_BRIEF_BASE_URL'] ?? '').trim().replace(/\/+$/, '');
+      if (!baseUrl) return unavailableBrief(date);
+
+      const url = `${baseUrl}/briefs/${date}.json`;
+
+      try {
+        const response = await fetch(url);
+        if (!response.ok) return unavailableBrief(date);
+
+        const raw = await response.json() as Record<string, unknown>;
+        const brief =
+          raw['brief'] && typeof raw['brief'] === 'object'
+            ? (raw['brief'] as Record<string, unknown>)
+            : raw;
+
+        return {
+          date: typeof brief['date'] === 'string' ? brief['date'] : date,
+          headline: typeof brief['headline'] === 'string' ? brief['headline'] : null,
+          calendar: Array.isArray(brief['calendar']) ? brief['calendar'] as CalendarEvent[] : [],
+          household:
+            raw['household'] && typeof raw['household'] === 'object'
+              ? raw['household'] as HouseholdBlock
+              : brief['household'] && typeof brief['household'] === 'object'
+                ? brief['household'] as HouseholdBlock
+                : null,
+          available: true,
+        } as StockingBriefSlice;
+      } catch {
+        return unavailableBrief(date);
+      }
+    }
 
     case 'get_due_store': {
       const date = args['date'] ? new Date(args['date'] as string) : new Date();
