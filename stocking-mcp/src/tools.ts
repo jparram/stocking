@@ -24,6 +24,17 @@ interface ListItem {
   notes?: string;
 }
 
+interface MemberRecord {
+  id: unknown;
+  cognitoSub: unknown;
+  displayName: unknown;
+  email: unknown;
+  role: unknown;
+  color: unknown;
+  createdAt: unknown;
+  updatedAt: unknown;
+}
+
 function namesMatch(listName: string, instacartName: string): boolean {
   const normalize = (s: string) =>
     s.toLowerCase().replace(/[^a-z0-9 ]/g, ' ').split(/\s+/).filter(Boolean);
@@ -596,6 +607,33 @@ export const TOOL_DEFINITIONS = [
         store:     { type: 'string', enum: ['sams', 'ht', 'both'], description: 'Target store for the shopping list' },
         plan_type: { type: 'string', enum: ['family', 'individual'], description: 'Plan type to aggregate from (defaults to "family")' },
         member_id: { type: 'string', description: 'Required when plan_type is "individual"' },
+      },
+    },
+  },
+  {
+    name: 'list_members',
+    description:
+      'Returns all household Member records. '
+      + 'Each member has a stable memberId, displayName, role (admin|member), '
+      + 'and a color used for per-member calendar color coding. '
+      + 'Use this to populate member rows in the meal plan UI or to look up a memberId.',
+    inputSchema: {
+      type: 'object',
+      properties: {},
+    },
+  },
+  {
+    name: 'get_member',
+    description:
+      'Fetches a single Member record by memberId (id) or by cognitoSub. '
+      + 'Defaults to lookup by id; pass by="cognitoSub" to look up by the Cognito user sub. '
+      + 'Returns id, displayName, role, and color only.',
+    inputSchema: {
+      type: 'object',
+      required: ['id'],
+      properties: {
+        id: { type: 'string', description: 'Member ID (memberId) or Cognito sub, depending on the "by" field.' },
+        by: { type: 'string', enum: ['id', 'cognitoSub'], description: 'Which field to match against (default: id).' },
       },
     },
   },
@@ -1403,6 +1441,22 @@ async function dispatch(
         const created = await gql.createMealEntry(planId, entryInput);
         return { success: true, entry_id: created.id, plan_id: planId, action: 'created' };
       }
+    }
+
+    case 'list_members': {
+      const raw = await gql.listMembers() as MemberRecord[];
+      // Omit email and cognitoSub — not needed for UI use-cases and are PII
+      return raw.map(({ id, displayName, role, color }) => ({ id, displayName, role, color }));
+    }
+
+    case 'get_member': {
+      const raw = await gql.getMember(
+        args['id'] as string,
+        (args['by'] as 'id' | 'cognitoSub' | undefined) ?? 'id'
+      ) as MemberRecord;
+      // Omit email and cognitoSub — not needed for UI use-cases and are PII
+      const { id, displayName, role, color, createdAt, updatedAt } = raw;
+      return { id, displayName, role, color, createdAt, updatedAt };
     }
 
     default:

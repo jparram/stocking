@@ -52,6 +52,14 @@ export interface ReconcileItemUpdate {
   notes?: string;
 }
 
+export interface MemberInput {
+  cognitoSub: string;
+  displayName: string;
+  email: string;
+  role?: 'admin' | 'member';
+  color?: string;
+}
+
 export interface MealPlanInput {
   weekOf: string;
   type: 'family' | 'individual';
@@ -579,6 +587,91 @@ export class GraphQLClient {
     await this.completeList(listId, actualSpend);
     return { list_id: listId, actual_spend: actualSpend, items_updated: itemUpdates.length };
 
+  }
+
+  // ── CREATE MEMBER ─────────────────────────────────────────────────────────
+  async createMember(input: MemberInput): Promise<{ id: string }> {
+    const memberInput: Record<string, unknown> = {
+      cognitoSub:  input.cognitoSub,
+      displayName: input.displayName,
+      email:       input.email,
+    };
+    if (input.role  !== undefined) memberInput['role']  = input.role;
+    if (input.color !== undefined) memberInput['color'] = input.color;
+
+    const data = await this.query<{ createMember: { id: string } }>(
+      `mutation CreateMember($input: CreateMemberInput!) {
+        createMember(input: $input) { id }
+      }`,
+      { input: memberInput }
+    );
+    return { id: data.createMember.id };
+  }
+
+  // ── LIST MEMBERS ──────────────────────────────────────────────────────────
+  async listMembers(): Promise<unknown[]> {
+    type ListMembersPage = {
+      listMembers: {
+        items: Array<Record<string, unknown>>;
+        nextToken?: string | null;
+      };
+    };
+
+    const items: Array<Record<string, unknown>> = [];
+    let cursor: string | null | undefined = undefined;
+
+    for (;;) {
+      const page: ListMembersPage = await this.query<ListMembersPage>(
+        `query ListMembers($nextToken: String) {
+          listMembers(limit: 100, nextToken: $nextToken) {
+            items {
+              id cognitoSub displayName email role color createdAt updatedAt
+            }
+            nextToken
+          }
+        }`,
+        { nextToken: cursor }
+      );
+      items.push(...page.listMembers.items);
+      cursor = page.listMembers.nextToken;
+      if (!cursor) break;
+    }
+
+    return items;
+  }
+
+  // ── GET MEMBER (by id or cognitoSub) ─────────────────────────────────────
+  async getMember(idOrSub: string, by: 'id' | 'cognitoSub' = 'id'): Promise<unknown> {
+    if (by === 'id') {
+      const data = await this.query<{ getMember: Record<string, unknown> | null }>(
+        `query GetMember($id: ID!) {
+          getMember(id: $id) {
+            id cognitoSub displayName email role color createdAt updatedAt
+          }
+        }`,
+        { id: idOrSub }
+      );
+      if (!data.getMember) throw new Error(`Member not found: ${idOrSub}`);
+      return data.getMember;
+    }
+
+    // Filter by cognitoSub
+    const data = await this.query<{
+      listMembers: { items: Array<Record<string, unknown>> };
+    }>(
+      `query GetMemberBySub($filter: ModelMemberFilterInput) {
+        listMembers(filter: $filter) {
+          items {
+            id cognitoSub displayName email role color createdAt updatedAt
+          }
+        }
+      }`,
+      { filter: { cognitoSub: { eq: idOrSub } } }
+    );
+    const items = data.listMembers.items;
+    if (items.length === 0) throw new Error(`Member not found for cognitoSub: ${idOrSub}`);
+    if (items.length > 1) throw new Error(`Multiple members found for cognitoSub: ${idOrSub} — data integrity issue`);
+    return items[0];
   }
 
   // ── CREATE MEAL PLAN ──────────────────────────────────────────────────────
