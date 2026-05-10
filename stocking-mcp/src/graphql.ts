@@ -654,6 +654,7 @@ export class GraphQLClient {
     );
     const items = data.listMembers.items;
     if (items.length === 0) throw new Error(`Member not found for cognitoSub: ${idOrSub}`);
+    if (items.length > 1) throw new Error(`Multiple members found for cognitoSub: ${idOrSub} — data integrity issue`);
     return items[0];
   }
 

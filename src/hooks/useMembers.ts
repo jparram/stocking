@@ -39,70 +39,10 @@ export function useMembers() {
     return clientRef.current;
   }
 
-  const [members, setMembers]           = useState<Member[]>([]);
+  const [members, setMembers]             = useState<Member[]>([]);
   const [currentMember, setCurrentMember] = useState<Member | null>(null);
-  const [loading, setLoading]           = useState(true);
-  const [error, setError]               = useState<string | null>(null);
-
-  // ── Load all Member records ─────────────────────────────────────────────────
-
-  const loadMembers = useCallback(async () => {
-    try {
-      const client = getClient();
-      const { data: raw = [] } = await client.models.Member.list();
-      setMembers(raw.map(mapMember));
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to load members.');
-    }
-  }, []);
-
-  // ── Ensure current user has a Member record ─────────────────────────────────
-
-  const ensureCurrentMember = useCallback(async () => {
-    try {
-      const attrs = await fetchUserAttributes();
-      const sub   = attrs.sub;
-      const email = attrs.email ?? '';
-      if (!sub) return;
-
-      const client = getClient();
-
-      // List members filtered by cognitoSub
-      const { data: existing = [] } = await client.models.Member.list({
-        filter: { cognitoSub: { eq: sub } },
-      });
-
-      if (existing.length > 0) {
-        setCurrentMember(mapMember(existing[0]));
-        return;
-      }
-
-      // First login — derive a displayName from the email prefix and pick a color
-      const { data: all = [] } = await client.models.Member.list();
-      const existingMembers = all.map(mapMember);
-
-      const displayName = (attrs.preferred_username ?? email.split('@')[0] ?? 'Member').trim();
-      const color = nextMemberColor(existingMembers.map(m => ({
-        id: m.id, name: m.displayName, color: m.color ?? '#3B82F6',
-      })));
-
-      const { data: created } = await client.models.Member.create({
-        cognitoSub:  sub,
-        displayName,
-        email,
-        role:  'member',
-        color,
-      });
-
-      if (created) {
-        setCurrentMember(mapMember(created));
-        setMembers(prev => [...prev, mapMember(created)]);
-      }
-    } catch (err) {
-      // Non-fatal — user can still use the app without a Member record
-      console.error('useMembers: failed to ensure current member:', err);
-    }
-  }, []);
+  const [loading, setLoading]             = useState(true);
+  const [error, setError]                 = useState<string | null>(null);
 
   // ── Update a Member's displayName and/or color ──────────────────────────────
 
@@ -113,21 +53,84 @@ export function useMembers() {
       if (updated) {
         const mapped = mapMember(updated);
         setMembers(prev => prev.map(m => m.id === id ? mapped : m));
-        if (currentMember?.id === id) setCurrentMember(mapped);
+        setCurrentMember(prev => (prev?.id === id ? mapped : prev));
       }
     },
-    [currentMember]
+    []
   );
 
-  // ── Initialise ──────────────────────────────────────────────────────────────
+  // ── Initialise: load all members + ensure current user has a record ─────────
 
   useEffect(() => {
-    (async () => {
+    let cancelled = false;
+
+    async function init() {
       setLoading(true);
-      await Promise.all([loadMembers(), ensureCurrentMember()]);
-      setLoading(false);
-    })();
-  }, [loadMembers, ensureCurrentMember]);
+      try {
+        const client = getClient();
+
+        // Load all members
+        const { data: raw = [] } = await client.models.Member.list();
+        const allMembers = raw.map(mapMember);
+        if (!cancelled) setMembers(allMembers);
+
+        // Ensure current user has a Member record
+        try {
+          const attrs = await fetchUserAttributes();
+          const sub   = attrs.sub;
+          const email = attrs.email ?? '';
+          if (!sub) return;
+
+          const existing = allMembers.find(m => m.cognitoSub === sub);
+
+          if (existing) {
+            if (!cancelled) setCurrentMember(existing);
+          } else {
+            // First login — derive displayName from email prefix and pick a color
+            const displayName = (attrs.preferred_username || email.split('@')[0] || 'Member').trim();
+            const color = nextMemberColor(allMembers.map(m => ({
+              id: m.id, name: m.displayName, color: m.color ?? '#3B82F6',
+            })));
+
+            const { data: created } = await client.models.Member.create({
+              cognitoSub:  sub,
+              displayName,
+              email,
+              role:  'member',
+              color,
+            });
+
+            if (created && !cancelled) {
+              const mapped = mapMember(created);
+              setCurrentMember(mapped);
+              setMembers(prev => [...prev, mapped]);
+            }
+          }
+        } catch (err) {
+          // Non-fatal — user can still use the app without a Member record
+          console.error('useMembers: failed to ensure current member:', err);
+        }
+      } catch (err) {
+        if (!cancelled) setError(err instanceof Error ? err.message : 'Failed to load members.');
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    }
+
+    void init();
+    return () => { cancelled = true; };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const loadMembers = useCallback(async () => {
+    try {
+      const client = getClient();
+      const { data: raw = [] } = await client.models.Member.list();
+      setMembers(raw.map(mapMember));
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to load members.');
+    }
+  }, []);
 
   return { members, currentMember, loading, error, loadMembers, updateMember };
 }
