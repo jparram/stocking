@@ -1,0 +1,41 @@
+name: Request Copilot PR Review
+
+# Fires when Copilot SWE Agent opens or reopens a PR.
+# Automatically requests a review from Copilot so the review
+# loop starts without manual intervention.
+
+on:
+  pull_request:
+    types: [opened, reopened]
+
+jobs:
+  request-review:
+    name: Request Copilot review
+    runs-on: ubuntu-latest
+    # Only run when the PR was opened by the Copilot SWE Agent bot.
+    if: github.event.pull_request.user.login == 'Copilot'
+    permissions:
+      pull-requests: write
+
+    steps:
+      - name: Request review from Copilot
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          REPO: ${{ github.repository }}
+        run: |
+          gh api \
+            --method POST \
+            -H "Accept: application/vnd.github+json" \
+            /repos/$REPO/pulls/$PR_NUMBER/requested_reviewers \
+            -f 'reviewers[]=${{ github.repository_owner }}'
+
+      - name: Comment to trigger Copilot review
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          REPO: ${{ github.repository }}
+        run: |
+          gh pr comment $PR_NUMBER \
+            --repo $REPO \
+            --body "@Copilot Please review this PR. Check that the implementation matches the acceptance criteria in the linked issue. Flag any type errors, missing edge cases, or deviations from the existing patterns in the codebase (hooks, AppSync auth, MCP tool registration)."
