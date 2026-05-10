@@ -36,10 +36,19 @@ interface MemberRecord {
 }
 
 export interface CalendarEvent {
+  title?: string;
+  start?: string;
+  end?: string;
   [key: string]: unknown;
 }
 
 export interface HouseholdBlock {
+  shopping_due?: boolean;
+  shopping_store?: string | null;
+  shopping_list_id?: string | null;
+  meal_plan_week_of?: string | null;
+  today_dinner?: string | null;
+  pantry_flags?: string[];
   [key: string]: unknown;
 }
 
@@ -49,6 +58,23 @@ export interface StockingBriefSlice {
   calendar: CalendarEvent[];
   household: HouseholdBlock | null;
   available: boolean;
+}
+
+function getDailyBriefBaseUrl(): string {
+  return (process.env['DAILY_BRIEF_BASE_URL'] ?? '').trim().replace(/\/+$/, '');
+}
+
+function parseHouseholdBlock(
+  root: Record<string, unknown>,
+  brief: Record<string, unknown>
+): HouseholdBlock | null {
+  const fromRoot = root['household'];
+  if (fromRoot && typeof fromRoot === 'object') return fromRoot as HouseholdBlock;
+
+  const fromBrief = brief['household'];
+  if (fromBrief && typeof fromBrief === 'object') return fromBrief as HouseholdBlock;
+
+  return null;
 }
 
 function namesMatch(listName: string, instacartName: string): boolean {
@@ -695,6 +721,10 @@ async function dispatch(
     if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) {
       throw new Error(`Invalid date format "${value}". Expected YYYY-MM-DD.`);
     }
+    const parsed = new Date(`${value}T00:00:00.000Z`);
+    if (Number.isNaN(parsed.getTime()) || parsed.toISOString().slice(0, 10) !== value) {
+      throw new Error(`Invalid date value "${value}". Expected a real calendar date.`);
+    }
     return value;
   };
 
@@ -710,7 +740,7 @@ async function dispatch(
 
     case 'get_daily_brief': {
       const date = toIsoDate(args['date'] as string | undefined);
-      const baseUrl = (process.env['DAILY_BRIEF_BASE_URL'] ?? '').trim().replace(/\/+$/, '');
+      const baseUrl = getDailyBriefBaseUrl();
       if (!baseUrl) return unavailableBrief(date);
 
       const url = `${baseUrl}/briefs/${date}.json`;
@@ -724,17 +754,19 @@ async function dispatch(
           raw['brief'] && typeof raw['brief'] === 'object'
             ? (raw['brief'] as Record<string, unknown>)
             : raw;
+        const calendarRaw = brief['calendar'];
+        const calendar = Array.isArray(calendarRaw)
+          ? calendarRaw.filter(
+              (event): event is CalendarEvent =>
+                typeof event === 'object' && event !== null && !Array.isArray(event)
+            )
+          : [];
 
         return {
           date: typeof brief['date'] === 'string' ? brief['date'] : date,
           headline: typeof brief['headline'] === 'string' ? brief['headline'] : null,
-          calendar: Array.isArray(brief['calendar']) ? brief['calendar'] as CalendarEvent[] : [],
-          household:
-            raw['household'] && typeof raw['household'] === 'object'
-              ? raw['household'] as HouseholdBlock
-              : brief['household'] && typeof brief['household'] === 'object'
-                ? brief['household'] as HouseholdBlock
-                : null,
+          calendar,
+          household: parseHouseholdBlock(raw, brief),
           available: true,
         } as StockingBriefSlice;
       } catch {
