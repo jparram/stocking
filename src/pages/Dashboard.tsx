@@ -1,3 +1,4 @@
+import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import type { AppState } from '../types';
 import { formatDate, formatCurrency, listProgress, listTotalCost, storeLabel, getMondayOf } from '../utils';
@@ -5,6 +6,8 @@ import { MASTER_CATALOG } from '../data/masterCatalog';
 import StoreBadge from '../components/StoreBadge';
 import ProgressBar from '../components/ProgressBar';
 import { useRecipes } from '../hooks/useRecipes';
+import TodayCard from '../components/TodayCard';
+import { getDailyBrief, type DailyBrief, unavailableDailyBrief } from '../utils/dailyBrief';
 
 interface DashboardProps {
   state: AppState;
@@ -13,6 +16,7 @@ interface DashboardProps {
 export default function Dashboard({ state }: DashboardProps) {
   const { lists, weeklyLogs, settings } = state;
   const { recipes } = useRecipes();
+  const [brief, setBrief] = useState<DailyBrief>(unavailableDailyBrief());
 
   const weekOf = getMondayOf();
   const thisWeekLists = lists.filter(l => l.weekOf === weekOf);
@@ -33,6 +37,19 @@ export default function Dashboard({ state }: DashboardProps) {
   const totalSpend = weeklyLogs.slice(0, 4).reduce((s, l) => s + l.totalSpend, 0);
   const avgSpend = weeklyLogs.length > 0 ? totalSpend / Math.min(weeklyLogs.length, 4) : 0;
 
+  useEffect(() => {
+    let cancelled = false;
+
+    (async () => {
+      const nextBrief = await getDailyBrief();
+      if (!cancelled) setBrief(nextBrief);
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
   return (
     <div className="space-y-6">
       {/* Header */}
@@ -52,6 +69,8 @@ export default function Dashboard({ state }: DashboardProps) {
           + New List
         </Link>
       </div>
+
+      {brief.available && <TodayCard brief={brief} />}
 
       {/* Quick Stats */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
