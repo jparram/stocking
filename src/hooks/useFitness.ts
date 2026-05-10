@@ -67,6 +67,7 @@ function parseExercises(raw: unknown): WorkoutExerciseSpec[] | undefined {
     try {
       parsed = JSON.parse(parsed) as unknown;
     } catch {
+      console.warn('useFitness: failed to parse WorkoutDay exercises JSON blob.');
       return undefined;
     }
   }
@@ -136,6 +137,10 @@ function getNinetyDayCutoff(): string {
   const cutoff = new Date();
   cutoff.setDate(cutoff.getDate() - 90);
   return cutoff.toISOString().slice(0, 10);
+}
+
+function toIsoDate(value: string): string {
+  return value.slice(0, 10);
 }
 
 function sortDaysByOrder(items: WorkoutDay[]): WorkoutDay[] {
@@ -221,7 +226,7 @@ export function useFitness() {
       try {
         await loadPrograms(memberId);
       } catch (error) {
-        console.error('useFitness: failed to load programs', error);
+        console.error(`useFitness: failed to load programs for member ${memberId}`, error);
         if (!cancelled) setPrograms([]);
       } finally {
         if (!cancelled) setLoading(false);
@@ -251,7 +256,7 @@ export function useFitness() {
           loadSessions(memberId, programId),
         ]);
       } catch (error) {
-        console.error('useFitness: failed to load active program details', error);
+        console.error(`useFitness: failed to load active program details for member ${memberId}`, error);
         if (!cancelled) {
           setDays([]);
           setSessions([]);
@@ -347,7 +352,7 @@ export function useFitness() {
     });
 
     if (errors?.length || !data) {
-      throw new Error(errors?.map(error => error.message).join(', ') ?? 'Failed to create workout program.');
+      throw new Error(errors?.map(error => error.message).join(', ') ?? 'Workout program was not created.');
     }
 
     const mapped = mapProgram(data);
@@ -441,7 +446,7 @@ export function useFitness() {
     });
 
     if (errors?.length || !data) {
-      throw new Error(errors?.map(error => error.message).join(', ') ?? 'Failed to create workout day.');
+      throw new Error(errors?.map(error => error.message).join(', ') ?? 'Workout day was not created.');
     }
 
     const mapped = mapDay(data);
@@ -526,11 +531,11 @@ export function useFitness() {
       });
 
       if (errors?.length || !data) {
-        throw new Error(errors?.map(error => error.message).join(', ') ?? 'Failed to create workout session.');
+        throw new Error(errors?.map(error => error.message).join(', ') ?? 'Workout session was not created.');
       }
 
       const mapped = mapSession(data);
-      if (activeProgram?.id === mapped.programId && mapped.completedAt >= getNinetyDayCutoff()) {
+      if (activeProgram?.id === mapped.programId && toIsoDate(mapped.completedAt) >= getNinetyDayCutoff()) {
         setSessions(prev => sortSessionsByDate([mapped, ...prev]));
       }
       return mapped;
