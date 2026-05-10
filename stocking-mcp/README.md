@@ -103,12 +103,6 @@ Claude will confirm the `stocking-mcp` server is connected and list the availabl
 | `delete_meal_entry` | Remove a single meal entry from a plan by its entry ID |
 | `list_meal_plans` | List weeks that have plans, with optional filters by week, type, or member |
 
-### Brief generation
-
-| Tool | What it does |
-|---|---|
-| `get_daily_brief` | Assembles the `household` block for the Morning Advantage DailyBrief — calls `get_due_store`, `get_shopping_lists`, and `get_meal_plan` internally and returns a single ready-to-embed object |
-
 #### Shopping tool signatures (generate_list_from_plan + create_shopping_list)
 
 ```ts
@@ -180,17 +174,15 @@ list_meal_plans({ limit?: number, week_of?: string, type?: string, member_id?: s
 get_daily_brief({ date?: string })
   → {
       available: true,
-      household: {
-        shopping_due: boolean,
-        shopping_store: "Sam's Club" | "Harris Teeter" | null,
-        shopping_list_id: string | null,
-        meal_plan_week_of: string | null,   // ISO YYYY-MM-DD, Monday of current week
-        today_dinner: string | null,
-        pantry_flags: string[],             // reserved — always [] for now
-      },
-      flags: { has_household: true },
+      date: string,
+      headline: string | null,
+      calendar: CalendarEvent[],
+      household: HouseholdBlock | null,
     }
+  | { available: false, date: string, headline: null, calendar: [], household: null }
 ```
+
+`available: false` is returned when `DAILY_BRIEF_BASE_URL` is not configured or the brief JSON cannot be fetched for the requested date (e.g. brief not yet written for today).
 
 ---
 
@@ -227,9 +219,11 @@ For Morning Advantage brief generation, include the following in the DailyBrief 
 
 ### Morning Advantage brief-generator integration
 
-The Work LVM brief generator (Morning Advantage repo) calls `stocking:get_daily_brief` at ~5 AM each day to populate the `household` block before writing the brief to S3.
+The brief generator (Work LVM, Morning Advantage repo) assembles the `household` block by calling `get_due_store`, `get_shopping_lists`, and `get_meal_plan` from Stocking MCP at ~5 AM, then writes the completed brief to S3 (`briefs/YYYY-MM-DD.json`).
 
-#### Required environment variables on the LVM host
+`stocking:get_daily_brief` is the **read-back** tool — it fetches the written brief from S3 so that Claude or other consumers can inspect it.
+
+#### Required environment variables on the LVM host (brief generator)
 
 ```bash
 STOCKING_MCP_URL=https://<lambda-function-url>.lambda-url.us-east-1.on.aws/
@@ -238,18 +232,15 @@ STOCKING_MCP_TOKEN=<same bearer token as MCP_AUTH_TOKEN in stocking-mcp/.env>
 
 These are the same credentials used by the Claude.ai connector — no new secrets required.
 
-#### Brief generator call sequence
+#### Required environment variable on the MCP server (for `get_daily_brief` read-back)
 
-```
-POST $STOCKING_MCP_URL  (Bearer $STOCKING_MCP_TOKEN)
-  → { method: "tools/call", params: { name: "get_daily_brief", arguments: {} } }
-
-Response household block → embed in DailyBrief JSON → write to S3 briefs/YYYY-MM-DD.json
+```bash
+DAILY_BRIEF_BASE_URL=https://<s3-or-cloudfront-url>
 ```
 
 #### Failure handling
 
-If `get_daily_brief` fails or is unreachable, omit the `household` block and set `flags.has_household = false`. The brief still writes to S3.
+If any Stocking MCP call fails during brief generation, the `household` block is omitted and `flags.has_household` is set to `false`. The brief still writes to S3. `get_daily_brief` returns `available: false` if the brief cannot be fetched.
 
 ---
 
