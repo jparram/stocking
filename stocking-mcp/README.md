@@ -202,7 +202,7 @@ For Morning Advantage brief generation, include the following in the DailyBrief 
 
 ### Morning Advantage brief-generator integration
 
-The Work LVM brief generator (Morning Advantage repo) calls Stocking MCP tools at ~5 AM before writing the brief to S3:
+The Work LLM brief generator (Morning Advantage repo) calls Stocking MCP tools at ~5 AM before writing the brief to S3:
 
 1. `stocking:get_due_store` → `shopping_due` + `shopping_store`
 2. `stocking:get_meal_plan` for current week → `meal_plan_week_of` + `today_dinner`
