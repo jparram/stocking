@@ -193,10 +193,10 @@ For Morning Advantage brief generation, include the following in the DailyBrief 
 
 | Field | Type | Source |
 |---|---|---|
-| `shopping_due` | boolean | `stocking:get_due_store` |
-| `shopping_store` | string \| null | `stocking:get_due_store` |
+| `shopping_due` | boolean | Derived from `stocking:get_due_store` (`due_store !== null`) |
+| `shopping_store` | string \| null | Derived from `stocking:get_due_store.due_store` (`sams` \| `ht`) and mapped to display label (`Sam's Club` \| `Harris Teeter`) |
 | `shopping_list_id` | string \| null | Active list ID for the due store, if one exists |
-| `meal_plan_week_of` | YYYY-MM-DD \| null | `stocking:get_meal_plan` for current week |
+| `meal_plan_week_of` | string \| null | `stocking:get_meal_plan` for current week (ISO `YYYY-MM-DD`, Monday-of-week) |
 | `today_dinner` | string \| null | Dinner entry from meal plan for today's date |
 | `pantry_flags` | string[] | Reserved — empty for now, future pantry tracking |
 
@@ -204,7 +204,9 @@ For Morning Advantage brief generation, include the following in the DailyBrief 
 
 The Work LLM brief generator (Morning Advantage repo) calls Stocking MCP tools at ~5 AM before writing the brief to S3:
 
-1. `stocking:get_due_store` → `shopping_due` + `shopping_store`
+1. `stocking:get_due_store` → use `due_store` to derive:
+   - `shopping_due = (due_store !== null)`
+   - `shopping_store = "Sam's Club"` when `due_store = "sams"`, `"Harris Teeter"` when `due_store = "ht"`, else `null`
 2. `stocking:get_meal_plan` for current week → `meal_plan_week_of` + `today_dinner`
 
 Set `flags.has_household = true` whenever the `household` object is present in the brief.
