@@ -35,6 +35,52 @@ interface MemberRecord {
   updatedAt: unknown;
 }
 
+export interface CalendarEvent {
+  title?: string;
+  start?: string;
+  end?: string;
+  [key: string]: unknown;
+}
+
+export interface HouseholdBlock {
+  shopping_due?: boolean;
+  shopping_store?: string | null;
+  shopping_list_id?: string | null;
+  meal_plan_week_of?: string | null;
+  today_dinner?: string | null;
+  pantry_flags?: string[];
+  [key: string]: unknown;
+}
+
+export interface StockingBriefSlice {
+  date: string;
+  headline: string | null;
+  calendar: CalendarEvent[];
+  household: HouseholdBlock | null;
+  available: boolean;
+}
+
+function getDailyBriefBaseUrl(): string {
+  return (process.env['DAILY_BRIEF_BASE_URL'] ?? '').trim().replace(/\/+$/, '');
+}
+
+function isPlainObject(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+function parseHouseholdBlock(
+  root: Record<string, unknown>,
+  brief: Record<string, unknown>
+): HouseholdBlock | null {
+  const fromRoot = root['household'];
+  if (isPlainObject(fromRoot)) return fromRoot as HouseholdBlock;
+
+  const fromBrief = brief['household'];
+  if (isPlainObject(fromBrief)) return fromBrief as HouseholdBlock;
+
+  return null;
+}
+
 function namesMatch(listName: string, instacartName: string): boolean {
   const normalize = (s: string) =>
     s.toLowerCase().replace(/[^a-z0-9 ]/g, ' ').split(/\s+/).filter(Boolean);
@@ -107,6 +153,19 @@ function resolveItem(
 // ── Tool definitions ──────────────────────────────────────────────────────────
 
 export const TOOL_DEFINITIONS = [
+  {
+    name: 'get_daily_brief',
+    description:
+      'Fetches a DailyBrief JSON by date and returns the Stocking-focused slice '
+      + '(headline, calendar events, and household block). '
+      + 'Returns available=false if the brief cannot be fetched.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        date: { type: 'string', description: 'ISO date (YYYY-MM-DD). Defaults to today.' },
+      },
+    },
+  },
   {
     name: 'get_due_store',
     description:
@@ -661,7 +720,67 @@ async function dispatch(
   catalog: CatalogItem[],
   kroger?: KrogerClient
 ): Promise<unknown> {
+  const toIsoDate = (value?: string): string => {
+    if (!value) return new Date().toISOString().slice(0, 10);
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) {
+      throw new Error(`Invalid date format "${value}". Expected YYYY-MM-DD.`);
+    }
+    const parsed = new Date(`${value}T00:00:00.000Z`);
+    if (Number.isNaN(parsed.getTime()) || parsed.toISOString().slice(0, 10) !== value) {
+      throw new Error(`Invalid date value "${value}". Expected a real calendar date.`);
+    }
+    return value;
+  };
+
+  const unavailableBrief = (date: string): StockingBriefSlice => ({
+    date,
+    headline: null,
+    calendar: [],
+    household: null,
+    available: false,
+  });
+
   switch (name) {
+
+    case 'get_daily_brief': {
+      const date = toIsoDate(args['date'] as string | undefined);
+      const baseUrl = getDailyBriefBaseUrl();
+      if (!baseUrl) return unavailableBrief(date);
+
+      const url = `${baseUrl}/briefs/${date}.json`;
+
+      try {
+        const response = await fetch(url);
+        if (!response.ok) return unavailableBrief(date);
+
+        const parsed = await response.json() as unknown;
+        if (!isPlainObject(parsed)) return unavailableBrief(date);
+        const raw = parsed;
+
+        const briefValue = raw['brief'];
+        if (briefValue !== undefined && !isPlainObject(briefValue)) {
+          return unavailableBrief(date);
+        }
+        const brief = isPlainObject(briefValue) ? briefValue : raw;
+        const calendarRaw = brief['calendar'];
+        const calendar = Array.isArray(calendarRaw)
+          ? calendarRaw.filter(
+              (event): event is CalendarEvent =>
+                isPlainObject(event)
+            )
+          : [];
+
+        return {
+          date: typeof brief['date'] === 'string' ? brief['date'] : date,
+          headline: typeof brief['headline'] === 'string' ? brief['headline'] : null,
+          calendar,
+          household: parseHouseholdBlock(raw, brief),
+          available: true,
+        } as StockingBriefSlice;
+      } catch {
+        return unavailableBrief(date);
+      }
+    }
 
     case 'get_due_store': {
       const date = args['date'] ? new Date(args['date'] as string) : new Date();
