@@ -17,39 +17,48 @@ export interface DailyBrief {
 
 interface RpcResponse {
   result?: { content?: Array<{ text?: string }> };
-  error?: { message?: string };
+  error?: { message?: string; code?: number };
 }
 
-export async function getDailyBrief(date?: string): Promise<DailyBrief | null> {
-  if (!MCP_URL) return null;
+export function unavailableDailyBrief(date = ''): DailyBrief {
+  return { available: false, date, headline: null, household: null };
+}
 
-  const response = await fetch(MCP_URL, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      ...(MCP_TOKEN ? { Authorization: `Bearer ${MCP_TOKEN}` } : {}),
-    },
-    body: JSON.stringify({
-      jsonrpc: '2.0',
-      id: 1,
-      method: 'tools/call',
-      params: {
-        name: 'get_daily_brief',
-        arguments: date ? { date } : {},
+export async function getDailyBrief(date?: string): Promise<DailyBrief> {
+  if (!MCP_URL) return unavailableDailyBrief(date);
+
+  try {
+    const response = await fetch(MCP_URL, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        ...(MCP_TOKEN ? { Authorization: `Bearer ${MCP_TOKEN}` } : {}),
       },
-    }),
-  });
+      body: JSON.stringify({
+        jsonrpc: '2.0',
+        id: 1,
+        method: 'tools/call',
+        params: {
+          name: 'get_daily_brief',
+          arguments: date ? { date } : {},
+        },
+      }),
+    });
 
-  const data = (await response.json()) as RpcResponse;
-  if (!response.ok && !data.error) {
-    throw new Error(`Daily brief fetch failed: ${response.status}`);
+    const data = (await response.json()) as RpcResponse;
+    if (!response.ok) {
+      throw new Error(`Daily brief HTTP error: ${response.status} ${response.statusText}`);
+    }
+    if (data.error) {
+      throw new Error(`Daily brief RPC error (${data.error.code ?? 'unknown'}): ${data.error.message ?? 'Unknown error'}`);
+    }
+
+    const text = data.result?.content?.[0]?.text;
+    if (!text) return unavailableDailyBrief(date);
+
+    return JSON.parse(text) as DailyBrief;
+  } catch (error) {
+    console.error('Failed to fetch daily brief:', error);
+    return unavailableDailyBrief(date);
   }
-  if (data.error) {
-    throw new Error(data.error.message ?? 'Daily brief fetch failed');
-  }
-
-  const text = data.result?.content?.[0]?.text;
-  if (!text) return null;
-
-  return JSON.parse(text) as DailyBrief;
 }

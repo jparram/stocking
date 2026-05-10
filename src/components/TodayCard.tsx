@@ -1,3 +1,4 @@
+import { useMemo } from 'react';
 import { Link } from 'react-router-dom';
 import type { DailyBrief } from '../utils/dailyBrief';
 
@@ -7,17 +8,25 @@ interface TodayCardProps {
 }
 
 export default function TodayCard({ brief, fallbackDinner }: TodayCardProps) {
-  const dateLabel = new Date().toLocaleDateString('en-US', {
-    weekday: 'long',
-    month: 'long',
-    day: 'numeric',
-  });
+  const dateLabel = useMemo(
+    () =>
+      new Date().toLocaleDateString('en-US', {
+        weekday: 'long',
+        month: 'long',
+        day: 'numeric',
+      }),
+    []
+  );
 
   const household = brief.household;
   const dinner = household?.today_dinner?.trim() || fallbackDinner?.trim() || null;
   const shoppingDue = household?.shopping_due === true;
   const shoppingStore = household?.shopping_store?.trim();
   const shoppingListId = household?.shopping_list_id?.trim();
+  const isHarrisTeeter = shoppingStore?.toLowerCase().includes('harris') ?? false;
+  const buttonColorClasses = isHarrisTeeter
+    ? 'bg-ht hover:bg-ht-dark'
+    : 'bg-sams hover:bg-sams-dark';
 
   return (
     <section className="bg-white rounded-xl border border-brand-border p-4 shadow-sm">
@@ -39,7 +48,8 @@ export default function TodayCard({ brief, fallbackDinner }: TodayCardProps) {
       {shoppingDue && shoppingListId && (
         <Link
           to={`/list/${shoppingListId}`}
-          className="inline-flex mt-4 bg-sams text-white px-3 py-1.5 rounded-lg text-sm font-semibold hover:bg-sams-dark transition-colors"
+          aria-label={`Open ${shoppingStore || 'shopping'} list`}
+          className={`inline-flex mt-4 text-white px-3 py-1.5 rounded-lg text-sm font-semibold transition-colors ${buttonColorClasses}`}
         >
           Open list
         </Link>
