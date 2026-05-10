@@ -113,6 +113,17 @@ export interface MealEntry {
   updatedAt: string;
 }
 
+export interface Member {
+  id: string;          // UUID — stable app-level identity (memberId)
+  cognitoSub: string;  // Cognito user sub — links to the authenticated user
+  displayName: string; // Human-readable name shown in UI (e.g. "Dave", "Sarah")
+  email: string;       // Cognito email, stored for reference
+  role?: 'admin' | 'member';
+  color?: string;      // Hex or token — used for calendar color coding per member
+  createdAt: string;
+  updatedAt: string;
+}
+
 export interface MealPlanMember {
   id: string;
   name: string;

@@ -599,6 +599,32 @@ export const TOOL_DEFINITIONS = [
       },
     },
   },
+  {
+    name: 'list_members',
+    description:
+      'Returns all household Member records. '
+      + 'Each member has a stable memberId, displayName, email, role (admin|member), '
+      + 'and a color used for per-member calendar color coding. '
+      + 'Use this to populate member rows in the meal plan UI or to look up a memberId.',
+    inputSchema: {
+      type: 'object',
+      properties: {},
+    },
+  },
+  {
+    name: 'get_member',
+    description:
+      'Fetches a single Member record by memberId (id) or by cognitoSub. '
+      + 'Defaults to lookup by id; pass by="cognitoSub" to look up by the Cognito user sub.',
+    inputSchema: {
+      type: 'object',
+      required: ['id'],
+      properties: {
+        id: { type: 'string', description: 'Member ID (memberId) or Cognito sub, depending on the "by" field.' },
+        by: { type: 'string', enum: ['id', 'cognitoSub'], description: 'Which field to match against (default: id).' },
+      },
+    },
+  },
 ];
 
 // ── Handler ───────────────────────────────────────────────────────────────────
@@ -1404,6 +1430,15 @@ async function dispatch(
         return { success: true, entry_id: created.id, plan_id: planId, action: 'created' };
       }
     }
+
+    case 'list_members':
+      return gql.listMembers();
+
+    case 'get_member':
+      return gql.getMember(
+        args['id'] as string,
+        (args['by'] as 'id' | 'cognitoSub' | undefined) ?? 'id'
+      );
 
     default:
       throw new Error(`Unknown tool: ${name}`);

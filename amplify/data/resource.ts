@@ -105,11 +105,26 @@ const schema = a.schema({
       allow.publicApiKey().to(['create', 'read', 'update', 'delete']),
     ]),
 
+  Member: a
+    .model({
+      cognitoSub: a.string().required(), // Cognito user sub — links to the authenticated user
+      displayName: a.string().required(), // Human-readable name shown in UI (e.g. "Dave", "Sarah")
+      email: a.string().required(),       // Cognito email, stored for reference
+      role: a.enum(['admin', 'member']),  // admin can invite/remove others
+      color: a.string(),                  // Hex or token — used for calendar color coding per member
+    })
+    .authorization(allow => [
+      allow.owner(),
+      allow.group('family').to(['read']),
+      allow.group('admin').to(['read', 'update']),
+      allow.publicApiKey().to(['create', 'read', 'update']),
+    ]),
+
   MealPlan: a
     .model({
       weekOf: a.date().required(),   // ISO date of Monday of the week
       type: a.enum(['family', 'individual']),
-      memberId: a.string(),          // null for family plans; Cognito sub for individual
+      memberId: a.string(),          // null for family plans; Member.id for individual
       entries: a.hasMany('MealEntry', 'planId'),
     })
     .authorization(allow => [
