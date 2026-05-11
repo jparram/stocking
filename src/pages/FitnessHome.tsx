@@ -247,7 +247,7 @@ export default function FitnessHome() {
             <p className="text-xs font-semibold uppercase tracking-[0.2em] text-brand-muted">
               Today — {todayWeekday}
             </p>
-            <h2 className="mt-2 text-xl font-bold text-brand-text">Loading today&apos;s workout…</h2>
+            <h2 className="mt-2 text-xl font-bold text-brand-text">Loading today's workout…</h2>
             <p className="mt-2 text-sm text-brand-muted">
               Pulling the active program details before showing today&apos;s card and recent session history.
             </p>

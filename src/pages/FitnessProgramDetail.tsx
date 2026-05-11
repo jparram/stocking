@@ -53,7 +53,7 @@ export default function FitnessProgramDetail() {
         <div className="text-4xl">📅</div>
         <h1 className="mt-3 text-xl font-bold text-brand-text">Workout day not found</h1>
         <p className="mt-2 text-sm text-brand-muted">
-          This workout day isn&apos;t available in the active program right now.
+          This workout day isn't available in the active program right now.
         </p>
         <button
           onClick={() => navigate('/fitness')}
