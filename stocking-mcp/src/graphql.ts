@@ -1032,8 +1032,11 @@ export class GraphQLClient {
     };
     if (options?.dayId) filter['dayId'] = { eq: options.dayId };
     if (options?.programId) filter['programId'] = { eq: options.programId };
-    if (options?.completedAt) filter['completedAt'] = { eq: options.completedAt };
-    if (options?.completedAtGte) filter['completedAt'] = { ge: options.completedAtGte };
+    if (options?.completedAt) {
+      filter['completedAt'] = { eq: options.completedAt };
+    } else if (options?.completedAtGte) {
+      filter['completedAt'] = { ge: options.completedAtGte };
+    }
 
     const target = Math.max(1, options?.limit ?? 200);
     const pageLimit = Math.min(100, target);
