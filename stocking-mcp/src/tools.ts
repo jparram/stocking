@@ -106,6 +106,69 @@ function toMonday(dateStr: string): string {
   return d.toISOString().slice(0, 10);
 }
 
+function formatIsoDateInTimeZone(date: Date, timeZone: string): string {
+  const parts = new Intl.DateTimeFormat('en-CA', {
+    timeZone,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).formatToParts(date);
+  const year = parts.find((part) => part.type === 'year')?.value;
+  const month = parts.find((part) => part.type === 'month')?.value;
+  const day = parts.find((part) => part.type === 'day')?.value;
+  if (!year || !month || !day) {
+    throw new Error(`Could not derive local date in timezone "${timeZone}"`);
+  }
+  return `${year}-${month}-${day}`;
+}
+
+function getWorkoutTimeZone(): string {
+  return (process.env['TZ'] ?? '').trim() || 'America/New_York';
+}
+
+function normalizeDayLabel(value: string): string {
+  return value.trim().toLowerCase();
+}
+
+function isTodayMatch(dayLabel: string, todayWeekday: string, todayWeekdayShort: string): boolean {
+  const normalized = normalizeDayLabel(dayLabel);
+  const long = normalizeDayLabel(todayWeekday);
+  const short = normalizeDayLabel(todayWeekdayShort);
+  return normalized === long || normalized === short;
+}
+
+function subtractIsoDays(isoDate: string, amount: number): string {
+  const base = new Date(`${isoDate}T00:00:00.000Z`);
+  base.setUTCDate(base.getUTCDate() - amount);
+  return base.toISOString().slice(0, 10);
+}
+
+async function resolveServiceMemberId(gql: GraphQLClient): Promise<string> {
+  const serviceEmail = (process.env['MCP_SERVICE_EMAIL'] ?? '').trim();
+  if (serviceEmail) {
+    try {
+      const byEmail = await gql.getMemberByEmail(serviceEmail) as { id?: unknown };
+      if (typeof byEmail.id === 'string' && byEmail.id) return byEmail.id;
+    } catch {
+      // Fall through to ADMIN_USER_SUB lookup for backwards compatibility.
+    }
+  }
+
+  const serviceSub = (process.env['ADMIN_USER_SUB'] ?? '').trim();
+  if (serviceSub) {
+    try {
+      const bySub = await gql.getMember(serviceSub, 'cognitoSub') as { id?: unknown };
+      if (typeof bySub.id === 'string' && bySub.id) return bySub.id;
+    } catch {
+      // Continue to the final configuration error below.
+    }
+  }
+
+  throw new Error(
+    'Unable to resolve service member identity. Set MCP_SERVICE_EMAIL or ADMIN_USER_SUB to a valid household member.'
+  );
+}
+
 // ── Shared item resolution ────────────────────────────────────────────────────
 
 function resolveItem(
@@ -666,6 +729,57 @@ export const TOOL_DEFINITIONS = [
         store:     { type: 'string', enum: ['sams', 'ht', 'both'], description: 'Target store for the shopping list' },
         plan_type: { type: 'string', enum: ['family', 'individual'], description: 'Plan type to aggregate from (defaults to "family")' },
         member_id: { type: 'string', description: 'Required when plan_type is "individual"' },
+      },
+    },
+  },
+  {
+    name: 'get_active_workout_program',
+    description:
+      'Returns the active workout program for the MCP service member, including all workout days '
+      + '(with exercises JSON) sorted by sortOrder. Returns program=null when no active program exists.',
+    inputSchema: {
+      type: 'object',
+      properties: {},
+    },
+  },
+  {
+    name: 'get_today_workout',
+    description:
+      'Returns today\'s scheduled workout day from the active program, whether it is already logged today, '
+      + 'and the active program name. Weekday is derived in the Lambda timezone '
+      + '(TZ env var, default America/New_York).',
+    inputSchema: {
+      type: 'object',
+      properties: {},
+    },
+  },
+  {
+    name: 'log_workout_session',
+    description:
+      'Logs a workout session as complete for a dayId and date (defaults to today in Lambda timezone). '
+      + 'Idempotent: if a session already exists for the same dayId + date, returns it instead of creating a duplicate.',
+    inputSchema: {
+      type: 'object',
+      required: ['dayId'],
+      properties: {
+        dayId: { type: 'string', description: 'WorkoutDay ID to mark as complete' },
+        day_id: { type: 'string', description: 'Deprecated alias for dayId' },
+        date: { type: 'string', description: 'YYYY-MM-DD (defaults to today in Lambda timezone)' },
+        durationMinutes: { type: 'number', description: 'Optional duration in minutes' },
+        duration_minutes: { type: 'number', description: 'Deprecated alias for durationMinutes' },
+        notes: { type: 'string', description: 'Optional session notes' },
+      },
+    },
+  },
+  {
+    name: 'list_workout_sessions',
+    description:
+      'Returns recent workout sessions for the MCP service member. '
+      + 'Use days to control lookback window (default 14).',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        days: { type: 'number', description: 'Lookback window in days (default 14)' },
       },
     },
   },
@@ -1560,6 +1674,130 @@ async function dispatch(
         const created = await gql.createMealEntry(planId, entryInput);
         return { success: true, entry_id: created.id, plan_id: planId, action: 'created' };
       }
+    }
+
+    case 'get_active_workout_program': {
+      const memberId = await resolveServiceMemberId(gql);
+      const program = await gql.getActiveWorkoutProgram(memberId);
+      if (!program) {
+        return { program: null };
+      }
+      const programId = program['id'] as string;
+      const days = await gql.listWorkoutDays(memberId, programId);
+      return {
+        program: {
+          ...program,
+          days,
+        },
+      };
+    }
+
+    case 'get_today_workout': {
+      const memberId = await resolveServiceMemberId(gql);
+      const program = await gql.getActiveWorkoutProgram(memberId);
+      if (!program) {
+        return {
+          day: null,
+          programName: null,
+          completedToday: false,
+        };
+      }
+
+      const programName = (program['name'] as string | undefined) ?? null;
+      const programId = program['id'] as string;
+      const days = await gql.listWorkoutDays(memberId, programId);
+      const timeZone = getWorkoutTimeZone();
+      const today = new Date();
+      const todayIso = formatIsoDateInTimeZone(today, timeZone);
+      const todayWeekday = new Intl.DateTimeFormat('en-US', {
+        weekday: 'long',
+        timeZone,
+      }).format(today);
+      const todayWeekdayShort = new Intl.DateTimeFormat('en-US', {
+        weekday: 'short',
+        timeZone,
+      }).format(today);
+
+      const day = days.find((item) =>
+        isTodayMatch(String(item['dayLabel'] ?? ''), todayWeekday, todayWeekdayShort)
+      ) ?? null;
+
+      if (!day) {
+        return {
+          day: null,
+          programName,
+          completedToday: false,
+        };
+      }
+
+      const dayId = day['id'] as string;
+      const existing = await gql.listWorkoutSessions(memberId, {
+        dayId,
+        completedAt: todayIso,
+        limit: 1,
+      });
+
+      return {
+        day,
+        programName,
+        completedToday: existing.length > 0,
+      };
+    }
+
+    case 'log_workout_session': {
+      const memberId = await resolveServiceMemberId(gql);
+      const dayId = (args['dayId'] as string | undefined) ?? (args['day_id'] as string);
+      if (!dayId) {
+        throw new Error('log_workout_session requires dayId');
+      }
+      const timeZone = getWorkoutTimeZone();
+      const completedAt = args['date']
+        ? toIsoDate(args['date'] as string)
+        : formatIsoDateInTimeZone(new Date(), timeZone);
+
+      const day = await gql.getWorkoutDay(dayId);
+      if (!day) {
+        throw new Error(`Workout day not found: ${dayId}`);
+      }
+      if ((day['memberId'] as string | undefined) !== memberId) {
+        throw new Error('Workout day does not belong to the MCP service member.');
+      }
+
+      const existing = await gql.listWorkoutSessions(memberId, {
+        dayId,
+        completedAt,
+        limit: 1,
+      });
+      if (existing.length > 0) {
+        return { session: existing[0] };
+      }
+
+      const session = await gql.createWorkoutSession({
+        memberId,
+        programId: day['programId'] as string,
+        dayId,
+        completedAt,
+        durationMinutes:
+          (args['durationMinutes'] as number | undefined)
+          ?? (args['duration_minutes'] as number | undefined),
+        notes: args['notes'] as string | undefined,
+      });
+      return { session };
+    }
+
+    case 'list_workout_sessions': {
+      const memberId = await resolveServiceMemberId(gql);
+      const rawDays = (args['days'] as number | undefined) ?? 14;
+      const lookbackDays = Number.isFinite(rawDays) && rawDays > 0
+        ? Math.floor(rawDays)
+        : 14;
+      const todayIso = formatIsoDateInTimeZone(new Date(), getWorkoutTimeZone());
+      const fromDate = subtractIsoDays(todayIso, lookbackDays - 1);
+      const sessions = await gql.listWorkoutSessions(memberId, {
+        completedAtGte: fromDate,
+        limit: 500,
+      });
+      return { sessions };
     }
 
     case 'list_members': {

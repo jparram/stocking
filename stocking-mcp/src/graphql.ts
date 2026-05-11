@@ -74,6 +74,15 @@ export interface MealEntryInput {
   notes?: string | null;
 }
 
+export interface WorkoutSessionInput {
+  memberId: string;
+  programId: string;
+  dayId: string;
+  completedAt: string;
+  durationMinutes?: number;
+  notes?: string;
+}
+
 // ── Meal entry sort helpers ───────────────────────────────────────────────────
 
 const DAY_ORDER = ['sun', 'mon', 'tue', 'wed', 'thu', 'fri', 'sat'];
@@ -674,6 +683,34 @@ export class GraphQLClient {
     return items[0];
   }
 
+  // ── GET MEMBER (by email) ──────────────────────────────────────────────────
+  async getMemberByEmail(email: string): Promise<unknown> {
+    const normalized = email.trim();
+    const data = await this.query<{
+      listMembers: { items: Array<Record<string, unknown>> };
+    }>(
+      `query GetMemberByEmail($filter: ModelMemberFilterInput) {
+        listMembers(filter: $filter) {
+          items {
+            id cognitoSub displayName email role color createdAt updatedAt
+          }
+        }
+      }`,
+      { filter: { email: { eq: normalized } } }
+    );
+    let items = data.listMembers.items;
+    if (items.length === 0) {
+      const allMembers = await this.listMembers() as Array<Record<string, unknown>>;
+      const target = normalized.toLowerCase();
+      items = allMembers.filter((member) =>
+        String(member['email'] ?? '').toLowerCase() === target
+      );
+    }
+    if (items.length === 0) throw new Error(`Member not found for email: ${email}`);
+    if (items.length > 1) throw new Error(`Multiple members found for email: ${email} — data integrity issue`);
+    return items[0];
+  }
+
   // ── CREATE MEAL PLAN ──────────────────────────────────────────────────────
   async createMealPlan(input: MealPlanInput): Promise<{ id: string }> {
     const planInput: Record<string, unknown> = {
@@ -909,5 +946,147 @@ export class GraphQLClient {
       { input: { id: entryId } }
     );
     return data.deleteMealEntry;
+  }
+
+  // ── WORKOUT PROGRAMS ───────────────────────────────────────────────────────
+  async getActiveWorkoutProgram(memberId: string): Promise<Record<string, unknown> | null> {
+    const data = await this.query<{
+      listWorkoutPrograms: { items: Array<Record<string, unknown>> };
+    }>(
+      `query GetActiveWorkoutProgram($filter: ModelWorkoutProgramFilterInput) {
+        listWorkoutPrograms(limit: 20, filter: $filter) {
+          items {
+            id memberId name description split isActive createdAt updatedAt
+          }
+        }
+      }`,
+      {
+        filter: {
+          memberId: { eq: memberId },
+          isActive: { eq: true },
+        },
+      }
+    );
+    const sorted = [...data.listWorkoutPrograms.items].sort((a, b) =>
+      String(b['updatedAt'] ?? '').localeCompare(String(a['updatedAt'] ?? ''))
+    );
+    return sorted[0] ?? null;
+  }
+
+  async getWorkoutDay(dayId: string): Promise<Record<string, unknown> | null> {
+    const data = await this.query<{ getWorkoutDay: Record<string, unknown> | null }>(
+      `query GetWorkoutDay($id: ID!) {
+        getWorkoutDay(id: $id) {
+          id programId memberId dayLabel type sortOrder exercises createdAt updatedAt
+        }
+      }`,
+      { id: dayId }
+    );
+    return data.getWorkoutDay;
+  }
+
+  async listWorkoutDays(memberId: string, programId: string): Promise<Array<Record<string, unknown>>> {
+    const data = await this.query<{
+      listWorkoutDays: {
+        items: Array<Record<string, unknown>>;
+      };
+    }>(
+      `query ListWorkoutDays($filter: ModelWorkoutDayFilterInput) {
+        listWorkoutDays(limit: 1000, filter: $filter) {
+          items {
+            id programId memberId dayLabel type sortOrder exercises createdAt updatedAt
+          }
+        }
+      }`,
+      {
+        filter: {
+          memberId: { eq: memberId },
+          programId: { eq: programId },
+        },
+      }
+    );
+    return [...data.listWorkoutDays.items].sort(
+      (a, b) => Number(a['sortOrder'] ?? 0) - Number(b['sortOrder'] ?? 0)
+    );
+  }
+
+  async listWorkoutSessions(
+    memberId: string,
+    options?: {
+      dayId?: string;
+      programId?: string;
+      completedAt?: string;
+      completedAtGte?: string;
+      limit?: number;
+    }
+  ): Promise<Array<Record<string, unknown>>> {
+    type WorkoutSessionsPage = {
+      listWorkoutSessions: {
+        items: Array<Record<string, unknown>>;
+        nextToken?: string | null;
+      };
+    };
+
+    const filter: Record<string, unknown> = {
+      memberId: { eq: memberId },
+    };
+    if (options?.dayId) filter['dayId'] = { eq: options.dayId };
+    if (options?.programId) filter['programId'] = { eq: options.programId };
+    if (options?.completedAt) filter['completedAt'] = { eq: options.completedAt };
+    if (options?.completedAtGte) filter['completedAt'] = { ge: options.completedAtGte };
+
+    const target = Math.max(1, options?.limit ?? 200);
+    const pageLimit = Math.min(100, target);
+    const collected: Array<Record<string, unknown>> = [];
+    let nextToken: string | null | undefined = undefined;
+
+    do {
+      const page: WorkoutSessionsPage = await this.query<WorkoutSessionsPage>(
+        `query ListWorkoutSessions($limit: Int, $nextToken: String, $filter: ModelWorkoutSessionFilterInput) {
+          listWorkoutSessions(limit: $limit, nextToken: $nextToken, filter: $filter) {
+            items {
+              id memberId programId dayId completedAt durationMinutes notes createdAt updatedAt
+            }
+            nextToken
+          }
+        }`,
+        {
+          limit: pageLimit,
+          nextToken,
+          filter,
+        }
+      );
+      collected.push(...page.listWorkoutSessions.items);
+      nextToken = page.listWorkoutSessions.nextToken;
+    } while (nextToken && collected.length < target);
+
+    return [...collected]
+      .sort((a, b) => {
+        const completedDiff = String(b['completedAt'] ?? '').localeCompare(String(a['completedAt'] ?? ''));
+        if (completedDiff !== 0) return completedDiff;
+        return String(b['createdAt'] ?? '').localeCompare(String(a['createdAt'] ?? ''));
+      })
+      .slice(0, target);
+  }
+
+  async createWorkoutSession(input: WorkoutSessionInput): Promise<Record<string, unknown>> {
+    const sessionInput: Record<string, unknown> = {
+      memberId: input.memberId,
+      programId: input.programId,
+      dayId: input.dayId,
+      completedAt: input.completedAt,
+    };
+    if (input.durationMinutes !== undefined) sessionInput['durationMinutes'] = input.durationMinutes;
+    if (input.notes !== undefined) sessionInput['notes'] = input.notes;
+
+    const data = await this.query<{ createWorkoutSession: Record<string, unknown> }>(
+      `mutation CreateWorkoutSession($input: CreateWorkoutSessionInput!) {
+        createWorkoutSession(input: $input) {
+          id memberId programId dayId completedAt durationMinutes notes createdAt updatedAt
+        }
+      }`,
+      { input: sessionInput }
+    );
+    return data.createWorkoutSession;
   }
 }
