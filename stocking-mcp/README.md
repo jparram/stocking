@@ -12,6 +12,8 @@ Once connected, you can say things like:
 - *"Complete last week's list — I spent $284"*
 - *"Create a family meal plan for this week"*
 - *"Set Monday dinner to the chicken stir-fry recipe"*
+- *"What's my workout for today?"*
+- *"Log today's push session as complete"*
 
 The list writes directly to DynamoDB and appears live in the Stocking app.
 
@@ -103,6 +105,15 @@ Claude will confirm the `stocking-mcp` server is connected and list the availabl
 | `delete_meal_entry` | Remove a single meal entry from a plan by its entry ID |
 | `list_meal_plans` | List weeks that have plans, with optional filters by week, type, or member |
 
+### Fitness
+
+| Tool | What it does |
+|---|---|
+| `get_active_workout_program` | Return the active workout program for the MCP service member, including all workout days |
+| `get_today_workout` | Return today’s scheduled workout day, active program name, and whether it was already completed today |
+| `log_workout_session` | Log a workout day as complete for a date (**idempotent** by day + date) |
+| `list_workout_sessions` | Return recent workout sessions for context/reporting |
+
 #### Shopping tool signatures (generate_list_from_plan + create_shopping_list)
 
 ```ts
@@ -161,6 +172,31 @@ delete_meal_entry({ entry_id: string, plan_id?: string })
 
 list_meal_plans({ limit?: number, week_of?: string, type?: string, member_id?: string })
   → MealPlan[]
+```
+
+#### Fitness tool signatures
+
+```ts
+get_active_workout_program()
+  → { program: WorkoutProgram & { days: WorkoutDay[] } } | { program: null }
+
+get_today_workout()
+  → {
+      day: WorkoutDay | null,
+      programName: string | null,
+      completedToday: boolean,
+    }
+
+log_workout_session({
+  dayId: string,
+  date?: string,              // YYYY-MM-DD, defaults to today in TZ (or America/New_York)
+  durationMinutes?: number,
+  notes?: string,
+})
+  → { session: WorkoutSession }
+
+list_workout_sessions({ days?: number })   // default 14
+  → { sessions: WorkoutSession[] }
 ```
 
 #### Day and meal type values
