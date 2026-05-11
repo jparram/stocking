@@ -309,7 +309,7 @@ export default function FitnessHome() {
 
           <section className="rounded-2xl border border-brand-border bg-white p-5 shadow-sm">
             <p className="text-xs font-semibold uppercase tracking-[0.2em] text-brand-muted">14-Day Streak</p>
-            <div className="mt-4 grid grid-cols-7 gap-2 sm:grid-cols-14">
+            <div className="mt-4 grid grid-cols-7 gap-2">
               {recentDays.map(day => {
                 const isComplete = completedRecentDays.has(day.iso);
                 return (

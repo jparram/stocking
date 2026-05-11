@@ -93,6 +93,7 @@ function parseExercises(raw: unknown): WorkoutExerciseSpec[] | undefined {
       if (!name || !reps || !rest || !Number.isFinite(sets)) return [];
 
       return [{
+        ...(typeof value.id === 'string' && value.id ? { id: value.id } : {}),
         name,
         sets,
         reps,
@@ -100,6 +101,17 @@ function parseExercises(raw: unknown): WorkoutExerciseSpec[] | undefined {
         ...(typeof value.notes === 'string' && value.notes ? { notes: value.notes } : {}),
       }];
     });
+}
+
+function ensureExerciseIds(exercises?: WorkoutExerciseSpec[]): WorkoutExerciseSpec[] | undefined {
+  return exercises?.map(exercise => (
+    exercise.id
+      ? exercise
+      : {
+          ...exercise,
+          id: crypto.randomUUID(),
+        }
+  ));
 }
 
 function serializeExercises(exercises?: WorkoutExerciseSpec[]): string | undefined {
@@ -526,6 +538,7 @@ export function useFitness() {
   const createDay = useCallback(async (input: WorkoutDayInput): Promise<WorkoutDay> => {
     const memberId = requireMemberId();
     await getProgramForMember(input.programId, memberId);
+    const exercises = ensureExerciseIds(input.exercises);
 
     const client = getClient();
     const { data, errors } = await client.models.WorkoutDay.create({
@@ -534,7 +547,7 @@ export function useFitness() {
       dayLabel: input.dayLabel,
       type: input.type,
       sortOrder: input.sortOrder,
-      exercises: serializeExercises(input.exercises),
+      exercises: serializeExercises(exercises),
     });
 
     if (errors?.length || !data) {
@@ -552,6 +565,7 @@ export function useFitness() {
   const updateDay = useCallback(async (id: string, patch: WorkoutDayPatch): Promise<void> => {
     const memberId = requireMemberId();
     await getDayForMember(id, memberId);
+    const exercises = patch.exercises === undefined ? undefined : ensureExerciseIds(patch.exercises);
 
     const client = getClient();
     const { errors } = await client.models.WorkoutDay.update({
@@ -559,7 +573,7 @@ export function useFitness() {
       ...(patch.dayLabel !== undefined ? { dayLabel: patch.dayLabel } : {}),
       ...(patch.type !== undefined ? { type: patch.type } : {}),
       ...(patch.sortOrder !== undefined ? { sortOrder: patch.sortOrder } : {}),
-      ...(patch.exercises !== undefined ? { exercises: serializeExercises(patch.exercises) } : {}),
+      ...(patch.exercises !== undefined ? { exercises: serializeExercises(exercises) } : {}),
     });
 
     if (errors?.length) {
@@ -569,12 +583,13 @@ export function useFitness() {
     setDays(prev =>
       sortDaysByOrder(
         prev.map(item =>
-          item.id === id
-            ? {
-                ...item,
-                ...patch,
-              }
-            : item,
+            item.id === id
+              ? {
+                  ...item,
+                  ...patch,
+                  ...(exercises !== undefined ? { exercises } : {}),
+                }
+              : item,
         ),
       ),
     );

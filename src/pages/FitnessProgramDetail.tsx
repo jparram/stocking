@@ -1,6 +1,6 @@
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { useFitness } from '../hooks/useFitness';
-import type { WorkoutDayType } from '../types';
+import type { WorkoutDayType, WorkoutExerciseSpec } from '../types';
 
 const TYPE_BADGE_STYLES: Record<WorkoutDayType, string> = {
   STRENGTH: 'bg-sams/10 text-sams',
@@ -14,6 +14,10 @@ function DayTypeBadge({ type }: { type: WorkoutDayType }) {
       {type}
     </span>
   );
+}
+
+function getExerciseKey(exercise: WorkoutExerciseSpec): string {
+  return exercise.id ?? `${exercise.name}:${exercise.sets}:${exercise.reps}:${exercise.rest}:${exercise.notes ?? ''}`;
 }
 
 export default function FitnessProgramDetail() {
@@ -88,8 +92,8 @@ export default function FitnessProgramDetail() {
 
         {day.exercises && day.exercises.length > 0 ? (
           <div className="mt-4 space-y-3">
-            {day.exercises.map((exercise, index) => (
-              <div key={`${exercise.name}-${index}`} className="rounded-xl bg-brand-bg px-4 py-3">
+            {day.exercises.map(exercise => (
+              <div key={getExerciseKey(exercise)} className="rounded-xl bg-brand-bg px-4 py-3">
                 <div className="flex items-start justify-between gap-3">
                   <div>
                     <p className="font-medium text-brand-text">{exercise.name}</p>

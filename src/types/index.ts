@@ -115,6 +115,7 @@ export interface MealEntry {
 }
 
 export interface WorkoutExerciseSpec {
+  id?: string;
   name: string;
   sets: number;
   reps: string;   // e.g. "8–10", "45s on / 15s off"
