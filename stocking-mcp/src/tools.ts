@@ -762,7 +762,10 @@ export const TOOL_DEFINITIONS = [
       + 'Snake_case aliases (day_id, duration_minutes) are deprecated; use camelCase fields.',
     inputSchema: {
       type: 'object',
-      required: ['dayId'],
+      anyOf: [
+        { required: ['dayId'] },
+        { required: ['day_id'] },
+      ],
       properties: {
         dayId: { type: 'string', description: 'WorkoutDay ID to mark as complete' },
         day_id: { type: 'string', description: 'Deprecated alias for dayId; use dayId instead.' },
