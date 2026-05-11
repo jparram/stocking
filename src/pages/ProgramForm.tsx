@@ -82,10 +82,11 @@ function dayFromPersisted(
 }
 
 function hasValidExerciseFields(exercise: ExerciseDraft): boolean {
-  const sets = Number.parseInt(exercise.sets.trim(), 10);
+  const sets = Number(exercise.sets.trim());
   return Boolean(
     exercise.name.trim()
     && Number.isFinite(sets)
+    && Number.isInteger(sets)
     && sets > 0
     && exercise.reps.trim()
     && exercise.rest.trim(),
@@ -114,11 +115,13 @@ export default function ProgramForm() {
   const [description, setDescription] = useState('');
   const [days, setDays] = useState<DayDraft[]>([]);
   const [initialDayIds, setInitialDayIds] = useState<string[]>([]);
+  const [createdProgramId, setCreatedProgramId] = useState<string | null>(null);
   const [loadingData, setLoadingData] = useState(isEdit);
   const [saving, setSaving] = useState(false);
   const [nameError, setNameError] = useState('');
   const [dayError, setDayError] = useState('');
   const [saveError, setSaveError] = useState('');
+  const isCreatingWhileLoading = !isEdit && !createdProgramId && loading;
 
   useEffect(() => {
     if (!isEdit || !id) return;
@@ -253,7 +256,7 @@ export default function ProgramForm() {
   const toExerciseInput = (exercise: ExerciseDraft): WorkoutExerciseSpec => ({
     ...(exercise.id ? { id: exercise.id } : {}),
     name: exercise.name.trim(),
-    sets: Number.parseInt(exercise.sets.trim(), 10),
+    sets: Number(exercise.sets.trim()),
     reps: exercise.reps.trim(),
     rest: exercise.rest.trim(),
     ...(exercise.notes.trim() ? { notes: exercise.notes.trim() } : {}),
@@ -280,43 +283,47 @@ export default function ProgramForm() {
         split: split.trim() || undefined,
         description: description.trim() || undefined,
       };
-
-      if (isEdit && id) {
-        await updateProgram(id, programInput);
-        const currentDayIds = new Set(days.filter(day => day.id).map(day => day.id as string));
-        const removedDayIds = initialDayIds.filter(dayId => !currentDayIds.has(dayId));
-        for (const dayId of removedDayIds) {
-          await deleteDay(dayId);
+      let programId = id ?? createdProgramId;
+      if (!programId) {
+        if (isCreatingWhileLoading) {
+          throw new Error('Cannot create program while data is still loading. Please wait for loading to complete before saving.');
         }
-
-        for (const [sortOrder, day] of days.entries()) {
-          const dayInput = {
-            dayLabel: day.dayLabel.trim(),
-            type: day.type,
-            sortOrder,
-            exercises: day.exercises.map(toExerciseInput),
-          };
-
-          if (day.id) {
-            await updateDay(day.id, dayInput);
-          } else {
-            await createDay({ programId: id, ...dayInput });
-          }
-        }
-      } else {
         const program = await createProgram({
           ...programInput,
           isActive: programs.length === 0,
         });
+        programId = program.id;
+        setCreatedProgramId(program.id);
+      } else {
+        await updateProgram(programId, programInput);
+      }
 
-        for (const [sortOrder, day] of days.entries()) {
-          await createDay({
-            programId: program.id,
-            dayLabel: day.dayLabel.trim(),
-            type: day.type,
-            sortOrder,
-            exercises: day.exercises.map(toExerciseInput),
-          });
+      const currentDayIds = new Set(days.filter(day => day.id).map(day => day.id as string));
+      const removedDayIds = initialDayIds.filter(dayId => !currentDayIds.has(dayId));
+      for (const dayId of removedDayIds) {
+        await deleteDay(dayId);
+      }
+
+      for (const [sortOrder, day] of days.entries()) {
+        const dayInput = {
+          dayLabel: day.dayLabel.trim(),
+          type: day.type,
+          sortOrder,
+          exercises: day.exercises.map(toExerciseInput),
+        };
+
+        if (day.id) {
+          await updateDay(day.id, dayInput);
+        } else {
+          const createdDay = await createDay({ programId, ...dayInput });
+          setDays(prev =>
+            prev.map((item, dayIndex) =>
+              dayIndex === sortOrder
+                ? { ...item, id: createdDay.id }
+                : item,
+            ),
+          );
+          setInitialDayIds(prev => (prev.includes(createdDay.id) ? prev : [...prev, createdDay.id]));
         }
       }
 
@@ -441,6 +448,8 @@ export default function ProgramForm() {
                         type="button"
                         onClick={() => moveDay(dayIndex, 'up')}
                         disabled={dayIndex === 0}
+                        aria-label={`Move ${day.dayLabel || `day ${dayIndex + 1}`} up`}
+                        title={`Move ${day.dayLabel || `day ${dayIndex + 1}`} up`}
                         className="rounded border border-brand-border px-2 py-1 text-xs text-brand-text disabled:cursor-not-allowed disabled:opacity-40"
                       >
                         ↑
@@ -449,6 +458,8 @@ export default function ProgramForm() {
                         type="button"
                         onClick={() => moveDay(dayIndex, 'down')}
                         disabled={dayIndex === days.length - 1}
+                        aria-label={`Move ${day.dayLabel || `day ${dayIndex + 1}`} down`}
+                        title={`Move ${day.dayLabel || `day ${dayIndex + 1}`} down`}
                         className="rounded border border-brand-border px-2 py-1 text-xs text-brand-text disabled:cursor-not-allowed disabled:opacity-40"
                       >
                         ↓
@@ -463,6 +474,8 @@ export default function ProgramForm() {
                       <button
                         type="button"
                         onClick={() => removeDay(dayIndex)}
+                        aria-label={`Remove ${day.dayLabel || `day ${dayIndex + 1}`}`}
+                        title={`Remove ${day.dayLabel || `day ${dayIndex + 1}`}`}
                         className="rounded border border-red-200 px-2 py-1 text-xs text-red-600"
                       >
                         ✕
@@ -524,6 +537,7 @@ export default function ProgramForm() {
                                 <input
                                   type="number"
                                   min="1"
+                                  step="1"
                                   value={exercise.sets}
                                   onChange={event => setExercisePatch(dayIndex, exerciseIndex, { sets: event.target.value })}
                                   className="w-full rounded-lg border border-brand-border px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-sams"
@@ -590,7 +604,7 @@ export default function ProgramForm() {
             </button>
             <button
               type="submit"
-              disabled={saving}
+              disabled={saving || isCreatingWhileLoading}
               className="rounded-lg bg-sams px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-sams-dark disabled:cursor-not-allowed disabled:opacity-70"
             >
               {saving ? 'Saving…' : 'Save Program'}
