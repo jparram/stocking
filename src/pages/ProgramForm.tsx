@@ -6,6 +6,7 @@ import type { WorkoutDayType, WorkoutExerciseSpec } from '../types';
 type FormStep = 1 | 2;
 
 interface ExerciseDraft {
+  localId: string;
   id?: string;
   name: string;
   sets: string;
@@ -15,6 +16,7 @@ interface ExerciseDraft {
 }
 
 interface DayDraft {
+  localId: string;
   id?: string;
   dayLabel: string;
   type: WorkoutDayType;
@@ -25,8 +27,13 @@ interface DayDraft {
 const DAY_TYPES: WorkoutDayType[] = ['STRENGTH', 'HIIT', 'REST'];
 const DAY_LABEL_SUGGESTIONS = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
 
+function createLocalId(): string {
+  return globalThis.crypto?.randomUUID?.() ?? `${Date.now()}-${Math.random().toString(16).slice(2)}`;
+}
+
 function emptyExercise(): ExerciseDraft {
   return {
+    localId: createLocalId(),
     name: '',
     sets: '',
     reps: '',
@@ -37,6 +44,7 @@ function emptyExercise(): ExerciseDraft {
 
 function emptyDay(dayIndex = 0): DayDraft {
   return {
+    localId: createLocalId(),
     dayLabel: DAY_LABEL_SUGGESTIONS[dayIndex % DAY_LABEL_SUGGESTIONS.length] ?? `Day ${dayIndex + 1}`,
     type: 'STRENGTH',
     exercises: [emptyExercise()],
@@ -46,6 +54,7 @@ function emptyDay(dayIndex = 0): DayDraft {
 
 function exerciseFromPersisted(exercise: WorkoutExerciseSpec): ExerciseDraft {
   return {
+    localId: exercise.id ?? createLocalId(),
     id: exercise.id,
     name: exercise.name,
     sets: String(exercise.sets),
@@ -63,12 +72,24 @@ function dayFromPersisted(
     : [emptyExercise()];
 
   return {
+    localId: day.id,
     id: day.id,
     dayLabel: day.dayLabel,
     type: day.type,
     exercises,
     isOpen: false,
   };
+}
+
+function hasValidExerciseFields(exercise: ExerciseDraft): boolean {
+  const sets = Number.parseInt(exercise.sets.trim(), 10);
+  return Boolean(
+    exercise.name.trim()
+    && Number.isFinite(sets)
+    && sets > 0
+    && exercise.reps.trim()
+    && exercise.rest.trim(),
+  );
 }
 
 export default function ProgramForm() {
@@ -213,8 +234,7 @@ export default function ProgramForm() {
         return false;
       }
       for (const exercise of day.exercises) {
-        const sets = Number.parseInt(exercise.sets.trim(), 10);
-        if (!exercise.name.trim() || !Number.isFinite(sets) || sets <= 0 || !exercise.reps.trim() || !exercise.rest.trim()) {
+        if (!hasValidExerciseFields(exercise)) {
           setDayError('Every exercise requires name, sets, reps, and rest.');
           return false;
         }
@@ -263,7 +283,7 @@ export default function ProgramForm() {
 
       if (isEdit && id) {
         await updateProgram(id, programInput);
-        const currentDayIds = new Set(days.map(day => day.id).filter(Boolean));
+        const currentDayIds = new Set(days.filter(day => day.id).map(day => day.id as string));
         const removedDayIds = initialDayIds.filter(dayId => !currentDayIds.has(dayId));
         for (const dayId of removedDayIds) {
           await deleteDay(dayId);
@@ -407,7 +427,7 @@ export default function ProgramForm() {
               </div>
             ) : (
               days.map((day, dayIndex) => (
-                <div key={day.id ?? `new-${dayIndex}`} className="rounded-xl border border-brand-border">
+                <div key={day.localId} className="rounded-xl border border-brand-border">
                   <div className="flex flex-col gap-3 px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
                     <div className="min-w-0">
                       <p className="truncate font-medium text-brand-text">
@@ -487,7 +507,7 @@ export default function ProgramForm() {
                         </button>
 
                         {day.exercises.map((exercise, exerciseIndex) => (
-                          <div key={exercise.id ?? `exercise-${exerciseIndex}`} className="rounded-xl bg-brand-bg px-4 py-3">
+                          <div key={exercise.localId} className="rounded-xl bg-brand-bg px-4 py-3">
                             <div className="grid gap-3 sm:grid-cols-2">
                               <label className="block sm:col-span-2">
                                 <span className="mb-1 block text-sm font-medium text-brand-text">Exercise</span>
