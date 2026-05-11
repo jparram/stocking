@@ -192,7 +192,7 @@ export function useFitness() {
         ...(nextToken ? { nextToken } : {}),
       });
       if (page.errors?.length) {
-        throw new Error(page.errors.map(error => error.message).join(', '));
+        throw new Error(`Failed to load workout programs: ${page.errors.map(error => error.message).join(', ')}`);
       }
       allPrograms.push(...(page.data ?? []));
       if (!page.nextToken) break;
@@ -221,7 +221,7 @@ export function useFitness() {
         ...(nextToken ? { nextToken } : {}),
       });
       if (page.errors?.length) {
-        throw new Error(page.errors.map(error => error.message).join(', '));
+        throw new Error(`Failed to load workout days: ${page.errors.map(error => error.message).join(', ')}`);
       }
       allDays.push(...(page.data ?? []));
       if (!page.nextToken) break;
@@ -251,7 +251,7 @@ export function useFitness() {
         ...(nextToken ? { nextToken } : {}),
       });
       if (page.errors?.length) {
-        throw new Error(page.errors.map(error => error.message).join(', '));
+        throw new Error(`Failed to load workout sessions: ${page.errors.map(error => error.message).join(', ')}`);
       }
       allSessions.push(...(page.data ?? []));
       if (!page.nextToken) break;
@@ -475,7 +475,7 @@ export function useFitness() {
         ...(nextDayToken ? { nextToken: nextDayToken } : {}),
       });
       if (page.errors?.length) {
-        throw new Error(page.errors.map(error => error.message).join(', '));
+        throw new Error(`Failed to load workout days for deletion: ${page.errors.map(error => error.message).join(', ')}`);
       }
       rawDays.push(...(page.data ?? []));
       if (!page.nextToken) break;
@@ -496,7 +496,7 @@ export function useFitness() {
         ...(nextSessionToken ? { nextToken: nextSessionToken } : {}),
       });
       if (page.errors?.length) {
-        throw new Error(page.errors.map(error => error.message).join(', '));
+        throw new Error(`Failed to load workout sessions for deletion: ${page.errors.map(error => error.message).join(', ')}`);
       }
       rawSessions.push(...(page.data ?? []));
       if (!page.nextToken) break;
