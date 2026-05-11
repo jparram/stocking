@@ -160,6 +160,7 @@ const schema = a.schema({
       type: a.ref('WorkoutDayType').required(),
       sortOrder: a.integer().required(),
       exercises: a.json(),
+      sessions: a.hasMany('WorkoutSession', 'dayId'),
     })
     .secondaryIndexes(index => [index('programId').name('byProgram')])
     .authorization(allow => [
