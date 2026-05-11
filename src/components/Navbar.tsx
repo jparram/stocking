@@ -7,6 +7,7 @@ const NAV_LINKS = [
   { to: '/list/new', label: 'New List', icon: '➕' },
   { to: '/recipes', label: 'Recipes', icon: '🍳' },
   { to: '/meal-plan', label: 'Meal Plan', icon: '🗓️' },
+  { to: '/fitness', label: 'Fitness', icon: '💪' },
   { to: '/history', label: 'History', icon: '📊' },
   { to: '/settings', label: 'Settings', icon: '⚙️' },
 ];
@@ -63,7 +64,7 @@ export default function Navbar() {
         </div>
 
         {/* Mobile Bottom Nav */}
-        <div className="md:hidden flex items-center justify-around border-t border-brand-border fixed bottom-0 left-0 right-0 bg-white z-50 py-2">
+        <div className="md:hidden fixed bottom-0 left-0 right-0 z-50 flex items-center gap-1 overflow-x-auto border-t border-brand-border bg-white px-2 py-2">
           {NAV_LINKS.map(link => {
             const isActive = link.to === '/'
               ? location.pathname === '/'
@@ -72,7 +73,7 @@ export default function Navbar() {
               <Link
                 key={link.to}
                 to={link.to}
-                className={`flex flex-col items-center text-xs gap-0.5 px-2 ${
+                className={`flex min-w-14 flex-col items-center gap-0.5 px-2 text-xs ${
                   isActive ? 'text-sams font-semibold' : 'text-brand-muted'
                 }`}
               >
@@ -83,7 +84,7 @@ export default function Navbar() {
           })}
           <button
             onClick={signOut}
-            className="flex flex-col items-center text-xs gap-0.5 px-2 text-brand-muted"
+            className="flex min-w-14 flex-col items-center gap-0.5 px-2 text-xs text-brand-muted"
           >
             <span className="text-lg">🚪</span>
             <span>Sign Out</span>

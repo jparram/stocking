@@ -231,7 +231,7 @@ export function useFitness() {
     return sortDaysByOrder(allDays.map(mapDay));
   }, []);
 
-  const loadSessions = useCallback(async (memberId: string, programId: string) => {
+  const loadSessions = useCallback(async (memberId: string) => {
     const client = getClient();
     const allSessions: Schema['WorkoutSession']['type'][] = [];
     let nextToken: string | null | undefined = undefined;
@@ -244,7 +244,6 @@ export function useFitness() {
       } = await client.models.WorkoutSession.list({
         filter: {
           memberId: { eq: memberId },
-          programId: { eq: programId },
           completedAt: { ge: getNinetyDayCutoff() },
         },
         limit: LIST_PAGE_LIMIT,
@@ -311,7 +310,7 @@ export function useFitness() {
       try {
         const [nextDays, nextSessions] = await Promise.all([
           loadDays(memberId, programId),
-          loadSessions(memberId, programId),
+          loadSessions(memberId),
         ]);
         if (!cancelled) {
           setDays(nextDays);
