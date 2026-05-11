@@ -103,6 +103,10 @@ function parseExercises(raw: unknown): WorkoutExerciseSpec[] | undefined {
     });
 }
 
+/**
+ * Preserves existing exercise IDs and assigns UUIDs to legacy rows that do not have one yet,
+ * so rendered exercise lists can use stable keys across edits and reloads.
+ */
 function ensureExerciseIds(exercises?: WorkoutExerciseSpec[]): WorkoutExerciseSpec[] | undefined {
   return exercises?.map(exercise => (
     exercise.id
