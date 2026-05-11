@@ -12,6 +12,8 @@ import RecipeForm from './pages/RecipeForm';
 import RecipeDetail from './pages/RecipeDetail';
 import MealPlan from './pages/MealPlan';
 import FitnessHome from './pages/FitnessHome';
+import FitnessProgramNew from './pages/FitnessProgramNew';
+import FitnessProgramDetail from './pages/FitnessProgramDetail';
 import { useAppState } from './hooks/useAppState';
 
 export default function App() {
@@ -46,6 +48,8 @@ export default function App() {
           <Route path="/recipes/:id" element={<RecipeDetail state={state} updateList={updateList} />} />
           <Route path="/meal-plan" element={<MealPlan />} />
           <Route path="/fitness" element={<FitnessHome />} />
+          <Route path="/fitness/program/new" element={<FitnessProgramNew />} />
+          <Route path="/fitness/program/:id" element={<FitnessProgramDetail />} />
           <Route
             path="*"
             element={

@@ -156,6 +156,7 @@ export default function FitnessHome() {
   const todayWeekday = today.toLocaleDateString('en-US', { weekday: 'long' });
   const todayWeekdayShort = today.toLocaleDateString('en-US', { weekday: 'short' });
   const todayIso = formatLocalIsoDate(today);
+  const activeProgramDetailsLoading = Boolean(activeProgram && loading && days.length === 0);
 
   const todayDay = useMemo(
     () => days.find(day => isTodayMatch(day.dayLabel, todayWeekday, todayWeekdayShort)) ?? null,
@@ -228,6 +229,30 @@ export default function FitnessHome() {
             Create Program
           </Link>
         </div>
+      ) : activeProgramDetailsLoading ? (
+        <>
+          <section className="rounded-2xl border border-brand-border bg-white p-5 shadow-sm">
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <p className="text-xs font-semibold uppercase tracking-[0.2em] text-brand-muted">Active Program</p>
+                <h2 className="mt-1 text-xl font-bold text-brand-text">{activeProgram.name}</h2>
+                <p className="mt-1 text-sm text-brand-muted">
+                  {activeProgram.split ? `${activeProgram.split} · ` : ''}Loading days…
+                </p>
+              </div>
+            </div>
+          </section>
+
+          <section className="rounded-2xl border border-brand-border bg-white p-5 shadow-sm">
+            <p className="text-xs font-semibold uppercase tracking-[0.2em] text-brand-muted">
+              Today — {todayWeekday}
+            </p>
+            <h2 className="mt-2 text-xl font-bold text-brand-text">Loading today&apos;s workout…</h2>
+            <p className="mt-2 text-sm text-brand-muted">
+              Pulling the active program details before showing today&apos;s card and recent session history.
+            </p>
+          </section>
+        </>
       ) : (
         <>
           <section className="rounded-2xl border border-brand-border bg-white p-5 shadow-sm">

@@ -629,12 +629,12 @@ export function useFitness() {
       }
 
       const mapped = mapSession(data);
-      if (activeProgram?.id === mapped.programId && toIsoDate(mapped.completedAt) >= getNinetyDayCutoff()) {
+      if (toIsoDate(mapped.completedAt) >= getNinetyDayCutoff()) {
         setSessions(prev => sortSessionsByDate([mapped, ...prev]));
       }
       return mapped;
     },
-    [activeProgram?.id, getDayForMember, requireMemberId],
+    [getDayForMember, requireMemberId],
   );
 
   const deleteSession = useCallback(async (id: string): Promise<void> => {
