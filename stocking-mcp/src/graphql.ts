@@ -698,14 +698,7 @@ export class GraphQLClient {
       }`,
       { filter: { email: { eq: normalized } } }
     );
-    let items = data.listMembers.items;
-    if (items.length === 0) {
-      const allMembers = await this.listMembers() as Array<Record<string, unknown>>;
-      const target = normalized.toLowerCase();
-      items = allMembers.filter((member) =>
-        String(member['email'] ?? '').toLowerCase() === target
-      );
-    }
+    const items = data.listMembers.items;
     if (items.length === 0) throw new Error(`Member not found for email: ${email}`);
     if (items.length > 1) throw new Error(`Multiple members found for email: ${email} — data integrity issue`);
     return items[0];

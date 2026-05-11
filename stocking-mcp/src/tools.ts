@@ -165,7 +165,8 @@ async function resolveServiceMemberId(gql: GraphQLClient): Promise<string> {
   }
 
   throw new Error(
-    'Unable to resolve service member identity. Set MCP_SERVICE_EMAIL or ADMIN_USER_SUB to a valid household member.'
+    'Unable to resolve service member identity. Prefer MCP_SERVICE_EMAIL (service account email); '
+    + 'ADMIN_USER_SUB is a legacy fallback. Ensure one maps to a valid household member.'
   );
 }
 
@@ -763,10 +764,10 @@ export const TOOL_DEFINITIONS = [
       required: ['dayId'],
       properties: {
         dayId: { type: 'string', description: 'WorkoutDay ID to mark as complete' },
-        day_id: { type: 'string', description: 'Deprecated alias for dayId' },
+        day_id: { type: 'string', description: 'Deprecated alias for dayId; use dayId instead.' },
         date: { type: 'string', description: 'YYYY-MM-DD (defaults to today in Lambda timezone)' },
         durationMinutes: { type: 'number', description: 'Optional duration in minutes' },
-        duration_minutes: { type: 'number', description: 'Deprecated alias for durationMinutes' },
+        duration_minutes: { type: 'number', description: 'Deprecated alias for durationMinutes; use durationMinutes instead.' },
         notes: { type: 'string', description: 'Optional session notes' },
       },
     },
