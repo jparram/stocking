@@ -11,6 +11,7 @@ import type {
 import { useMembers } from './useMembers';
 
 type Client = ReturnType<typeof generateClient<Schema>>;
+const LIST_PAGE_LIMIT = 1000;
 
 export interface WorkoutProgramInput {
   name: string;
@@ -177,33 +178,87 @@ export function useFitness() {
 
   const loadPrograms = useCallback(async (memberId: string) => {
     const client = getClient();
-    const { data = [] } = await client.models.WorkoutProgram.list({
-      filter: { memberId: { eq: memberId } },
-    });
-    setPrograms(data.map(mapProgram));
+    const allPrograms: Schema['WorkoutProgram']['type'][] = [];
+    let nextToken: string | null | undefined = undefined;
+
+    for (;;) {
+      const page: {
+        data: Schema['WorkoutProgram']['type'][];
+        errors?: { message: string }[];
+        nextToken?: string | null;
+      } = await client.models.WorkoutProgram.list({
+        filter: { memberId: { eq: memberId } },
+        limit: LIST_PAGE_LIMIT,
+        ...(nextToken ? { nextToken } : {}),
+      });
+      if (page.errors?.length) {
+        throw new Error(page.errors.map(error => error.message).join(', '));
+      }
+      allPrograms.push(...(page.data ?? []));
+      if (!page.nextToken) break;
+      nextToken = page.nextToken;
+    }
+
+    return allPrograms.map(mapProgram);
   }, []);
 
   const loadDays = useCallback(async (memberId: string, programId: string) => {
     const client = getClient();
-    const { data = [] } = await client.models.WorkoutDay.list({
-      filter: {
-        memberId: { eq: memberId },
-        programId: { eq: programId },
-      },
-    });
-    setDays(sortDaysByOrder(data.map(mapDay)));
+    const allDays: Schema['WorkoutDay']['type'][] = [];
+    let nextToken: string | null | undefined = undefined;
+
+    for (;;) {
+      const page: {
+        data: Schema['WorkoutDay']['type'][];
+        errors?: { message: string }[];
+        nextToken?: string | null;
+      } = await client.models.WorkoutDay.list({
+        filter: {
+          memberId: { eq: memberId },
+          programId: { eq: programId },
+        },
+        limit: LIST_PAGE_LIMIT,
+        ...(nextToken ? { nextToken } : {}),
+      });
+      if (page.errors?.length) {
+        throw new Error(page.errors.map(error => error.message).join(', '));
+      }
+      allDays.push(...(page.data ?? []));
+      if (!page.nextToken) break;
+      nextToken = page.nextToken;
+    }
+
+    return sortDaysByOrder(allDays.map(mapDay));
   }, []);
 
   const loadSessions = useCallback(async (memberId: string, programId: string) => {
     const client = getClient();
-    const { data = [] } = await client.models.WorkoutSession.list({
-      filter: {
-        memberId: { eq: memberId },
-        programId: { eq: programId },
-        completedAt: { ge: getNinetyDayCutoff() },
-      },
-    });
-    setSessions(sortSessionsByDate(data.map(mapSession)));
+    const allSessions: Schema['WorkoutSession']['type'][] = [];
+    let nextToken: string | null | undefined = undefined;
+
+    for (;;) {
+      const page: {
+        data: Schema['WorkoutSession']['type'][];
+        errors?: { message: string }[];
+        nextToken?: string | null;
+      } = await client.models.WorkoutSession.list({
+        filter: {
+          memberId: { eq: memberId },
+          programId: { eq: programId },
+          completedAt: { ge: getNinetyDayCutoff() },
+        },
+        limit: LIST_PAGE_LIMIT,
+        ...(nextToken ? { nextToken } : {}),
+      });
+      if (page.errors?.length) {
+        throw new Error(page.errors.map(error => error.message).join(', '));
+      }
+      allSessions.push(...(page.data ?? []));
+      if (!page.nextToken) break;
+      nextToken = page.nextToken;
+    }
+
+    return sortSessionsByDate(allSessions.map(mapSession));
   }, []);
 
   useEffect(() => {
@@ -224,7 +279,10 @@ export function useFitness() {
     setLoading(true);
     void (async () => {
       try {
-        await loadPrograms(memberId);
+        const nextPrograms = await loadPrograms(memberId);
+        if (!cancelled) {
+          setPrograms(nextPrograms);
+        }
       } catch (error) {
         console.error(`useFitness: failed to load programs for member ${memberId}`, error);
         if (!cancelled) setPrograms([]);
@@ -251,10 +309,14 @@ export function useFitness() {
     setLoading(true);
     void (async () => {
       try {
-        await Promise.all([
+        const [nextDays, nextSessions] = await Promise.all([
           loadDays(memberId, programId),
           loadSessions(memberId, programId),
         ]);
+        if (!cancelled) {
+          setDays(nextDays);
+          setSessions(nextSessions);
+        }
       } catch (error) {
         console.error(`useFitness: failed to load active program details for member ${memberId}`, error);
         if (!cancelled) {
@@ -316,9 +378,7 @@ export function useFitness() {
   const setActiveProgram = useCallback(async (id: string): Promise<void> => {
     const memberId = requireMemberId();
     const client = getClient();
-    const { data: scopedPrograms = [] } = await client.models.WorkoutProgram.list({
-      filter: { memberId: { eq: memberId } },
-    });
+    const scopedPrograms = await loadPrograms(memberId);
     if (!scopedPrograms.some(program => program.id === id)) {
       throw new Error('Workout program not found for this member.');
     }
@@ -337,7 +397,7 @@ export function useFitness() {
       throw new Error(updateError.message);
     }
 
-    await loadPrograms(memberId);
+    setPrograms(await loadPrograms(memberId));
   }, [loadPrograms, requireMemberId]);
 
   const createProgram = useCallback(async (input: WorkoutProgramInput): Promise<WorkoutProgram> => {
@@ -396,19 +456,52 @@ export function useFitness() {
 
     const client = getClient();
 
-    const { data: rawDays = [] } = await client.models.WorkoutDay.list({
-      filter: {
-        memberId: { eq: memberId },
-        programId: { eq: id },
-      },
-    });
+    const rawDays: Schema['WorkoutDay']['type'][] = [];
+    const rawSessions: Schema['WorkoutSession']['type'][] = [];
+    let nextDayToken: string | null | undefined = undefined;
+    let nextSessionToken: string | null | undefined = undefined;
 
-    const { data: rawSessions = [] } = await client.models.WorkoutSession.list({
-      filter: {
-        memberId: { eq: memberId },
-        programId: { eq: id },
-      },
-    });
+    for (;;) {
+      const page: {
+        data: Schema['WorkoutDay']['type'][];
+        errors?: { message: string }[];
+        nextToken?: string | null;
+      } = await client.models.WorkoutDay.list({
+        filter: {
+          memberId: { eq: memberId },
+          programId: { eq: id },
+        },
+        limit: LIST_PAGE_LIMIT,
+        ...(nextDayToken ? { nextToken: nextDayToken } : {}),
+      });
+      if (page.errors?.length) {
+        throw new Error(page.errors.map(error => error.message).join(', '));
+      }
+      rawDays.push(...(page.data ?? []));
+      if (!page.nextToken) break;
+      nextDayToken = page.nextToken;
+    }
+
+    for (;;) {
+      const page: {
+        data: Schema['WorkoutSession']['type'][];
+        errors?: { message: string }[];
+        nextToken?: string | null;
+      } = await client.models.WorkoutSession.list({
+        filter: {
+          memberId: { eq: memberId },
+          programId: { eq: id },
+        },
+        limit: LIST_PAGE_LIMIT,
+        ...(nextSessionToken ? { nextToken: nextSessionToken } : {}),
+      });
+      if (page.errors?.length) {
+        throw new Error(page.errors.map(error => error.message).join(', '));
+      }
+      rawSessions.push(...(page.data ?? []));
+      if (!page.nextToken) break;
+      nextSessionToken = page.nextToken;
+    }
 
     const deleteResults = await Promise.all([
       ...rawSessions.map(session => client.models.WorkoutSession.delete({ id: session.id })),
@@ -506,14 +599,16 @@ export function useFitness() {
     async (dayId: string, completedAt: string, options?: LogSessionOptions): Promise<WorkoutSession> => {
       const memberId = requireMemberId();
       const day = await getDayForMember(dayId, memberId);
+      const normalizedCompletedAt = toIsoDate(completedAt);
 
       const client = getClient();
       const { data: existing = [] } = await client.models.WorkoutSession.list({
         filter: {
           memberId: { eq: memberId },
           dayId: { eq: dayId },
-          completedAt: { eq: completedAt },
+          completedAt: { eq: normalizedCompletedAt },
         },
+        limit: 1,
       });
 
       const duplicate = existing[0];
@@ -525,7 +620,7 @@ export function useFitness() {
         memberId,
         programId: day.programId,
         dayId,
-        completedAt,
+        completedAt: normalizedCompletedAt,
         durationMinutes: options?.durationMinutes,
         notes: options?.notes,
       });
