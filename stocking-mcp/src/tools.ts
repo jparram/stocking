@@ -150,7 +150,7 @@ async function resolveServiceMemberId(gql: GraphQLClient): Promise<string> {
       const byEmail = await gql.getMemberByEmail(serviceEmail) as { id?: unknown };
       if (typeof byEmail.id === 'string' && byEmail.id) return byEmail.id;
     } catch {
-      // Fall through to ADMIN_USER_SUB lookup for backwards compatibility.
+      // Fall through to ADMIN_USER_SUB lookup for backward compatibility.
     }
   }
 
@@ -758,7 +758,8 @@ export const TOOL_DEFINITIONS = [
     name: 'log_workout_session',
     description:
       'Logs a workout session as complete for a dayId and date (defaults to today in Lambda timezone). '
-      + 'Idempotent: if a session already exists for the same dayId + date, returns it instead of creating a duplicate.',
+      + 'Idempotent: if a session already exists for the same dayId + date, returns it instead of creating a duplicate. '
+      + 'Snake_case aliases (day_id, duration_minutes) are deprecated; use camelCase fields.',
     inputSchema: {
       type: 'object',
       required: ['dayId'],
