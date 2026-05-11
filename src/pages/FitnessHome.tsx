@@ -264,6 +264,12 @@ export default function FitnessHome() {
                   {activeProgram.split ? `${activeProgram.split} · ` : ''}{days.length} day{days.length === 1 ? '' : 's'}
                 </p>
               </div>
+              <Link
+                to={`/fitness/program/${activeProgram.id}/edit`}
+                className="rounded-lg border border-brand-border px-3 py-2 text-sm font-medium text-brand-text transition-colors hover:bg-brand-bg"
+              >
+                Edit Program
+              </Link>
             </div>
           </section>
 

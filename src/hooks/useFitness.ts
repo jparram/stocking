@@ -390,6 +390,17 @@ export function useFitness() {
     return mapSession(data);
   }, [sessions]);
 
+  const getProgram = useCallback(async (id: string): Promise<WorkoutProgram> => {
+    const memberId = requireMemberId();
+    return getProgramForMember(id, memberId);
+  }, [getProgramForMember, requireMemberId]);
+
+  const getDays = useCallback(async (programId: string): Promise<WorkoutDay[]> => {
+    const memberId = requireMemberId();
+    await getProgramForMember(programId, memberId);
+    return loadDays(memberId, programId);
+  }, [getProgramForMember, loadDays, requireMemberId]);
+
   const setActiveProgram = useCallback(async (id: string): Promise<void> => {
     const memberId = requireMemberId();
     const client = getClient();
@@ -675,6 +686,8 @@ export function useFitness() {
     days,
     sessions,
     loading,
+    getProgram,
+    getDays,
     createProgram,
     updateProgram,
     deleteProgram,
