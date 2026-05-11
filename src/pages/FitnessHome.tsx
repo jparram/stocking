@@ -10,9 +10,6 @@ function formatLocalIsoDate(date: Date): string {
   return `${year}-${month}-${day}`;
 }
 
-const TODAY_WEEKDAY = new Date().toLocaleDateString('en-US', { weekday: 'long' });
-const TODAY_ISO = formatLocalIsoDate(new Date());
-
 const TYPE_BADGE_STYLES: Record<WorkoutDayType, string> = {
   STRENGTH: 'bg-sams/10 text-sams',
   HIIT: 'bg-ht/10 text-ht',
@@ -23,12 +20,10 @@ function normalizeDayLabel(value: string): string {
   return value.trim().toLowerCase();
 }
 
-function isTodayMatch(dayLabel: string): boolean {
+function isTodayMatch(dayLabel: string, todayWeekday: string, todayWeekdayShort: string): boolean {
   const normalized = normalizeDayLabel(dayLabel);
-  const long = normalizeDayLabel(TODAY_WEEKDAY);
-  const short = normalizeDayLabel(
-    new Date().toLocaleDateString('en-US', { weekday: 'short' }),
-  );
+  const long = normalizeDayLabel(todayWeekday);
+  const short = normalizeDayLabel(todayWeekdayShort);
   return normalized === long || normalized === short;
 }
 
@@ -41,8 +36,9 @@ function getDayTypeBadge(type: WorkoutDayType) {
 }
 
 function buildRecentDays() {
+  const baseDate = new Date();
   return Array.from({ length: 14 }, (_, index) => {
-    const date = new Date();
+    const date = new Date(baseDate);
     date.setDate(date.getDate() - (13 - index));
     return {
       iso: formatLocalIsoDate(date),
@@ -54,17 +50,18 @@ function buildRecentDays() {
 interface LogSessionModalProps {
   day: WorkoutDay;
   saving: boolean;
+  todayWeekday: string;
   onClose: () => void;
   onSubmit: (options: { durationMinutes?: number; notes?: string }) => Promise<void>;
 }
 
-function LogSessionModal({ day, saving, onClose, onSubmit }: LogSessionModalProps) {
+function LogSessionModal({ day, saving, todayWeekday, onClose, onSubmit }: LogSessionModalProps) {
   const [duration, setDuration] = useState('');
   const [notes, setNotes] = useState('');
 
   const handleSubmit = async () => {
     const trimmedNotes = notes.trim();
-    const parsedDuration = duration.trim() ? Number.parseInt(duration, 10) : Number.NaN;
+    const parsedDuration = Number.parseInt(duration.trim(), 10);
 
     await onSubmit({
       durationMinutes: Number.isFinite(parsedDuration) ? parsedDuration : undefined,
@@ -81,7 +78,7 @@ function LogSessionModal({ day, saving, onClose, onSubmit }: LogSessionModalProp
         <div className="flex items-center justify-between border-b border-brand-border px-5 py-4">
           <div>
             <h2 className="text-sm font-semibold text-brand-text">Log Session</h2>
-            <p className="text-xs text-brand-muted">{day.dayLabel} · {TODAY_WEEKDAY}</p>
+            <p className="text-xs text-brand-muted">{day.dayLabel} · {todayWeekday}</p>
           </div>
           <button
             onClick={onClose}
@@ -155,10 +152,14 @@ export default function FitnessHome() {
   const { activeProgram, days, sessions, loading, logSession } = useFitness();
   const [isLogModalOpen, setIsLogModalOpen] = useState(false);
   const [isSavingSession, setIsSavingSession] = useState(false);
+  const today = new Date();
+  const todayWeekday = today.toLocaleDateString('en-US', { weekday: 'long' });
+  const todayWeekdayShort = today.toLocaleDateString('en-US', { weekday: 'short' });
+  const todayIso = formatLocalIsoDate(today);
 
   const todayDay = useMemo(
-    () => days.find(day => isTodayMatch(day.dayLabel)) ?? null,
-    [days],
+    () => days.find(day => isTodayMatch(day.dayLabel, todayWeekday, todayWeekdayShort)) ?? null,
+    [days, todayWeekday, todayWeekdayShort],
   );
 
   const recentDays = useMemo(() => buildRecentDays(), []);
@@ -171,15 +172,16 @@ export default function FitnessHome() {
     () => sessions.filter(session => recentDaySet.has(session.completedAt)).length,
     [recentDaySet, sessions],
   );
-  const isTodayDone = Boolean(
-    todayDay && sessions.some(session => session.dayId === todayDay.id && session.completedAt === TODAY_ISO),
+  const isTodayDone = useMemo(
+    () => Boolean(todayDay && sessions.some(session => session.dayId === todayDay.id && session.completedAt === todayIso)),
+    [sessions, todayDay, todayIso],
   );
 
   const handleLogSession = async (options: { durationMinutes?: number; notes?: string }) => {
     if (!todayDay) return;
     setIsSavingSession(true);
     try {
-      await logSession(todayDay.id, TODAY_ISO, options);
+      await logSession(todayDay.id, todayIso, options);
       setIsLogModalOpen(false);
     } finally {
       setIsSavingSession(false);
@@ -245,7 +247,7 @@ export default function FitnessHome() {
               <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
                 <div>
                   <p className="text-xs font-semibold uppercase tracking-[0.2em] text-brand-muted">
-                    Today — {TODAY_WEEKDAY}
+                    Today — {todayWeekday}
                   </p>
                   <div className="mt-2 flex flex-wrap items-center gap-2">
                     <h2 className="text-xl font-bold text-brand-text">{todayDay.dayLabel}</h2>
@@ -271,7 +273,7 @@ export default function FitnessHome() {
           ) : (
             <section className="rounded-2xl border border-brand-border bg-white p-5 shadow-sm">
               <p className="text-xs font-semibold uppercase tracking-[0.2em] text-brand-muted">
-                Today — {TODAY_WEEKDAY}
+                Today — {todayWeekday}
               </p>
               <h2 className="mt-2 text-xl font-bold text-brand-text">No scheduled workout today</h2>
               <p className="mt-2 text-sm text-brand-muted">
@@ -336,6 +338,7 @@ export default function FitnessHome() {
         <LogSessionModal
           day={todayDay}
           saving={isSavingSession}
+          todayWeekday={todayWeekday}
           onClose={() => !isSavingSession && setIsLogModalOpen(false)}
           onSubmit={handleLogSession}
         />
