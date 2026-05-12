@@ -1,20 +1,7 @@
 import { Link, useNavigate, useParams } from 'react-router-dom';
+import DayTypeBadge from '../components/DayTypeBadge';
 import { useFitness } from '../hooks/useFitness';
-import type { WorkoutDayType, WorkoutExerciseSpec } from '../types';
-
-const TYPE_BADGE_STYLES: Record<WorkoutDayType, string> = {
-  STRENGTH: 'bg-sams/10 text-sams',
-  HIIT: 'bg-ht/10 text-ht',
-  REST: 'bg-brand-bg text-brand-muted',
-};
-
-function DayTypeBadge({ type }: { type: WorkoutDayType }) {
-  return (
-    <span className={`rounded-full px-2.5 py-1 text-xs font-semibold tracking-wide ${TYPE_BADGE_STYLES[type]}`}>
-      {type}
-    </span>
-  );
-}
+import type { WorkoutExerciseSpec } from '../types';
 
 function getExerciseKey(exercise: WorkoutExerciseSpec): string {
   return exercise.id ?? `${exercise.name}:${exercise.sets}:${exercise.reps}:${exercise.rest}:${exercise.notes ?? ''}`;
