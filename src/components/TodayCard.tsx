@@ -51,7 +51,7 @@ function TodayCardContent({ brief, dinner }: { brief: DailyBrief; dinner: string
         {todayWorkout && (
           <Link
             to="/fitness"
-            aria-label="Open fitness plan"
+            aria-label={`Open fitness plan: ${todayWorkout.dayLabel}`}
             className="flex items-center justify-between gap-2 rounded-lg border border-brand-border px-3 py-2 hover:bg-brand-bg transition-colors"
           >
             <span className="flex items-center gap-2 min-w-0">

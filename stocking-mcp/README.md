@@ -238,7 +238,7 @@ For Morning Advantage brief generation, include the following in the DailyBrief 
     "meal_plan_week_of": "2026-05-10",
     "today_dinner": "Chicken thighs — baked",
     "today_workout": {
-      "dayLabel": "Full Body A — Push Focus",
+      "dayLabel": "Monday",
       "type": "STRENGTH",
       "exerciseCount": 6,
       "completedToday": false
@@ -257,7 +257,7 @@ For Morning Advantage brief generation, include the following in the DailyBrief 
 | `shopping_list_id` | string \| null | Active list ID for the due store, if one exists |
 | `meal_plan_week_of` | string \| null | `stocking:get_meal_plan` for current week (ISO `YYYY-MM-DD`, Monday-of-week) |
 | `today_dinner` | string \| null | Dinner entry from meal plan for today's date |
-| `today_workout` | object \| null | `stocking:get_today_workout` result mapped to `{ dayLabel, type, exerciseCount, completedToday }`; null if no active program or no day matches today's weekday |
+| `today_workout` | object \| null | `stocking:get_today_workout` result mapped to `{ dayLabel, type, exerciseCount, completedToday }`; `dayLabel` must match the weekday naming used by the active program day (e.g., `Monday`/`Mon`) for the day to be selected. Null if no active program or no day matches today's weekday. |
 | `pantry_flags` | string[] | Reserved — empty for now, future pantry tracking |
 
 ### Morning Advantage brief-generator integration
