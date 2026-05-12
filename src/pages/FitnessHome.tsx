@@ -1,14 +1,9 @@
 import { useMemo, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
+import LogSessionModal from '../components/LogSessionModal';
 import { useFitness } from '../hooks/useFitness';
-import type { WorkoutDay, WorkoutDayType } from '../types';
-
-function formatLocalIsoDate(date: Date): string {
-  const year = date.getFullYear();
-  const month = `${date.getMonth() + 1}`.padStart(2, '0');
-  const day = `${date.getDate()}`.padStart(2, '0');
-  return `${year}-${month}-${day}`;
-}
+import type { WorkoutDayType } from '../types';
+import { formatLocalIsoDate } from '../utils';
 
 const TYPE_BADGE_STYLES: Record<WorkoutDayType, string> = {
   STRENGTH: 'bg-sams/10 text-sams',
@@ -47,111 +42,11 @@ function buildRecentDays() {
   });
 }
 
-interface LogSessionModalProps {
-  day: WorkoutDay;
-  saving: boolean;
-  todayWeekday: string;
-  onClose: () => void;
-  onSubmit: (options: { durationMinutes?: number; notes?: string }) => Promise<void>;
-}
-
-function LogSessionModal({ day, saving, todayWeekday, onClose, onSubmit }: LogSessionModalProps) {
-  const [duration, setDuration] = useState('');
-  const [notes, setNotes] = useState('');
-
-  const handleSubmit = async () => {
-    const trimmedNotes = notes.trim();
-    const parsedDuration = Number.parseInt(duration.trim(), 10);
-
-    await onSubmit({
-      durationMinutes: Number.isFinite(parsedDuration) ? parsedDuration : undefined,
-      notes: trimmedNotes || undefined,
-    });
-  };
-
-  return (
-    <div
-      className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/40"
-      onClick={event => event.target === event.currentTarget && onClose()}
-    >
-      <div className="w-full rounded-t-2xl bg-white shadow-xl sm:max-w-md sm:rounded-2xl">
-        <div className="flex items-center justify-between border-b border-brand-border px-5 py-4">
-          <div>
-            <h2 className="text-sm font-semibold text-brand-text">Log Session</h2>
-            <p className="text-xs text-brand-muted">{day.dayLabel} · {todayWeekday}</p>
-          </div>
-          <button
-            onClick={onClose}
-            className="text-xl leading-none text-brand-muted transition-colors hover:text-brand-text"
-            aria-label="Close log session modal"
-          >
-            ✕
-          </button>
-        </div>
-
-        <div className="space-y-4 px-5 py-4">
-          <div className="rounded-xl bg-brand-bg px-4 py-3">
-            <div className="flex items-center justify-between gap-3">
-              <div>
-                <p className="font-medium text-brand-text">{day.dayLabel}</p>
-                <p className="text-sm text-brand-muted">
-                  {day.exercises?.length ?? 0} exercise{day.exercises?.length === 1 ? '' : 's'}
-                </p>
-              </div>
-              {getDayTypeBadge(day.type)}
-            </div>
-          </div>
-
-          <label className="block">
-            <span className="mb-1.5 block text-sm font-medium text-brand-text">Duration (minutes)</span>
-            <input
-              type="number"
-              min="1"
-              inputMode="numeric"
-              value={duration}
-              onChange={event => setDuration(event.target.value)}
-              placeholder="Optional"
-              className="w-full rounded-lg border border-brand-border px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-sams"
-            />
-          </label>
-
-          <label className="block">
-            <span className="mb-1.5 block text-sm font-medium text-brand-text">Notes</span>
-            <textarea
-              value={notes}
-              onChange={event => setNotes(event.target.value)}
-              rows={4}
-              placeholder="Optional training notes"
-              className="w-full rounded-lg border border-brand-border px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-sams"
-            />
-          </label>
-
-          <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
-            <button
-              onClick={onClose}
-              className="rounded-lg border border-brand-border px-4 py-2 text-sm font-medium text-brand-muted transition-colors hover:bg-brand-bg hover:text-brand-text"
-            >
-              Cancel
-            </button>
-            <button
-              onClick={handleSubmit}
-              disabled={saving}
-              className="rounded-lg bg-sams px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-sams-dark disabled:cursor-not-allowed disabled:opacity-70"
-            >
-              {saving ? 'Saving…' : 'Log Complete'}
-            </button>
-          </div>
-        </div>
-      </div>
-    </div>
-  );
-}
 
 export default function FitnessHome() {
   const navigate = useNavigate();
-  const { activeProgram, days, sessions, loading, logSession } = useFitness();
+  const { activeProgram, days, sessions, loading } = useFitness();
   const [isLogModalOpen, setIsLogModalOpen] = useState(false);
-  const [isSavingSession, setIsSavingSession] = useState(false);
   const today = new Date();
   const todayWeekday = today.toLocaleDateString('en-US', { weekday: 'long' });
   const todayWeekdayShort = today.toLocaleDateString('en-US', { weekday: 'short' });
@@ -177,17 +72,6 @@ export default function FitnessHome() {
     () => Boolean(todayDay && sessions.some(session => session.dayId === todayDay.id && session.completedAt === todayIso)),
     [sessions, todayDay, todayIso],
   );
-
-  const handleLogSession = async (options: { durationMinutes?: number; notes?: string }) => {
-    if (!todayDay) return;
-    setIsSavingSession(true);
-    try {
-      await logSession(todayDay.id, todayIso, options);
-      setIsLogModalOpen(false);
-    } finally {
-      setIsSavingSession(false);
-    }
-  };
 
   if (loading && !activeProgram) {
     return (
@@ -368,10 +252,8 @@ export default function FitnessHome() {
       {isLogModalOpen && todayDay && (
         <LogSessionModal
           day={todayDay}
-          saving={isSavingSession}
-          todayWeekday={todayWeekday}
-          onClose={() => !isSavingSession && setIsLogModalOpen(false)}
-          onSubmit={handleLogSession}
+          onClose={() => setIsLogModalOpen(false)}
+          onLogged={() => setIsLogModalOpen(false)}
         />
       )}
     </div>
