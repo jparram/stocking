@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom';
 import { useMealCalendar } from '../hooks/useMealCalendar';
 import { getMondayOf } from '../utils';
 import type { DailyBrief } from '../utils/dailyBrief';
+import DayTypeBadge from './DayTypeBadge';
 
 interface TodayCardProps {
   brief: DailyBrief;
@@ -25,6 +26,7 @@ function TodayCardContent({ brief, dinner }: { brief: DailyBrief; dinner: string
   const shoppingDue = household?.shopping_due === true;
   const shoppingStore = household?.shopping_store?.trim();
   const shoppingListId = household?.shopping_list_id?.trim();
+  const todayWorkout = household?.today_workout;
   const isHarrisTeeter = shoppingStore?.toLowerCase().includes('harris') ?? false;
   const buttonColorClasses = isHarrisTeeter
     ? 'bg-ht hover:bg-ht-dark'
@@ -45,6 +47,25 @@ function TodayCardContent({ brief, dinner }: { brief: DailyBrief; dinner: string
         {dinner && <p>🍽️ Tonight: {dinner}</p>}
 
         {brief.headline && <p>📋 {brief.headline}</p>}
+
+        {todayWorkout && (
+          <Link
+            to="/fitness"
+            aria-label={`Open fitness plan: ${todayWorkout.dayLabel}`}
+            className="flex items-center justify-between gap-2 rounded-lg border border-brand-border px-3 py-2 hover:bg-brand-bg transition-colors"
+          >
+            <span className="flex items-center gap-2 min-w-0">
+              <span>🏋️</span>
+              <span className="font-medium truncate">{todayWorkout.dayLabel}</span>
+              <DayTypeBadge type={todayWorkout.type} />
+            </span>
+            <span className="text-brand-muted whitespace-nowrap">
+              {todayWorkout.completedToday
+                ? '✓ Done'
+                : `${todayWorkout.exerciseCount} exercise${todayWorkout.exerciseCount === 1 ? '' : 's'}`}
+            </span>
+          </Link>
+        )}
       </div>
 
       {shoppingDue && shoppingListId && (

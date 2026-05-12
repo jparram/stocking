@@ -48,6 +48,12 @@ export interface HouseholdBlock {
   shopping_list_id?: string | null;
   meal_plan_week_of?: string | null;
   today_dinner?: string | null;
+  today_workout?: {
+    dayLabel: string;
+    type: 'STRENGTH' | 'HIIT' | 'REST';
+    exerciseCount: number;
+    completedToday: boolean;
+  } | null;
   pantry_flags?: string[];
   [key: string]: unknown;
 }
