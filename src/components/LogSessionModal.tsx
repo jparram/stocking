@@ -1,22 +1,16 @@
 import { useEffect, useRef, useState } from 'react';
-import { useFitness } from '../hooks/useFitness';
-import type { WorkoutDay, WorkoutDayType } from '../types';
-import { formatLocalIsoDate } from '../utils';
-
-const TYPE_BADGE_STYLES: Record<WorkoutDayType, string> = {
-  STRENGTH: 'bg-sams/10 text-sams',
-  HIIT: 'bg-ht/10 text-ht',
-  REST: 'bg-brand-bg text-brand-muted',
-};
+import DayTypeBadge from './DayTypeBadge';
+import type { WorkoutDay, WorkoutSession } from '../types';
 
 interface LogSessionModalProps {
   day: WorkoutDay;
+  completedAt: string;
+  logSession: (dayId: string, completedAt: string, options?: { durationMinutes?: number; notes?: string }) => Promise<WorkoutSession>;
   onClose: () => void;
   onLogged: () => void;
 }
 
-export default function LogSessionModal({ day, onClose, onLogged }: LogSessionModalProps) {
-  const { logSession } = useFitness();
+export default function LogSessionModal({ day, completedAt, logSession, onClose, onLogged }: LogSessionModalProps) {
   const [duration, setDuration] = useState('');
   const [notes, setNotes] = useState('');
   const [saving, setSaving] = useState(false);
@@ -70,7 +64,7 @@ export default function LogSessionModal({ day, onClose, onLogged }: LogSessionMo
     try {
       const trimmedNotes = notes.trim();
       const parsedDuration = Number.parseInt(duration.trim(), 10);
-      await logSession(day.id, formatLocalIsoDate(new Date()), {
+      await logSession(day.id, completedAt, {
         durationMinutes: Number.isFinite(parsedDuration) && parsedDuration > 0 ? parsedDuration : undefined,
         notes: trimmedNotes || undefined,
       });
@@ -83,7 +77,7 @@ export default function LogSessionModal({ day, onClose, onLogged }: LogSessionMo
     }
   };
 
-  const todayWeekday = new Date().toLocaleDateString('en-US', { weekday: 'long' });
+  const todayWeekday = new Date(completedAt + 'T12:00:00').toLocaleDateString('en-US', { weekday: 'long' });
 
   return (
     <div
@@ -126,11 +120,7 @@ export default function LogSessionModal({ day, onClose, onLogged }: LogSessionMo
                   {day.exercises?.length ?? 0} exercise{day.exercises?.length === 1 ? '' : 's'}
                 </p>
               </div>
-              <span
-                className={`rounded-full px-2.5 py-1 text-xs font-semibold tracking-wide ${TYPE_BADGE_STYLES[day.type]}`}
-              >
-                {day.type}
-              </span>
+              <DayTypeBadge type={day.type} />
             </div>
           </div>
 

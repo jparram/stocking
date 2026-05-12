@@ -1,15 +1,9 @@
 import { useMemo, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
+import DayTypeBadge from '../components/DayTypeBadge';
 import LogSessionModal from '../components/LogSessionModal';
 import { useFitness } from '../hooks/useFitness';
-import type { WorkoutDayType } from '../types';
 import { formatLocalIsoDate } from '../utils';
-
-const TYPE_BADGE_STYLES: Record<WorkoutDayType, string> = {
-  STRENGTH: 'bg-sams/10 text-sams',
-  HIIT: 'bg-ht/10 text-ht',
-  REST: 'bg-brand-bg text-brand-muted',
-};
 
 function normalizeDayLabel(value: string): string {
   return value.trim().toLowerCase();
@@ -20,14 +14,6 @@ function isTodayMatch(dayLabel: string, todayWeekday: string, todayWeekdayShort:
   const long = normalizeDayLabel(todayWeekday);
   const short = normalizeDayLabel(todayWeekdayShort);
   return normalized === long || normalized === short;
-}
-
-function getDayTypeBadge(type: WorkoutDayType) {
-  return (
-    <span className={`rounded-full px-2.5 py-1 text-xs font-semibold tracking-wide ${TYPE_BADGE_STYLES[type]}`}>
-      {type}
-    </span>
-  );
 }
 
 function buildRecentDays() {
@@ -45,7 +31,7 @@ function buildRecentDays() {
 
 export default function FitnessHome() {
   const navigate = useNavigate();
-  const { activeProgram, days, sessions, loading } = useFitness();
+  const { activeProgram, days, sessions, loading, logSession } = useFitness();
   const [isLogModalOpen, setIsLogModalOpen] = useState(false);
   const today = new Date();
   const todayWeekday = today.toLocaleDateString('en-US', { weekday: 'long' });
@@ -166,7 +152,7 @@ export default function FitnessHome() {
                   </p>
                   <div className="mt-2 flex flex-wrap items-center gap-2">
                     <h2 className="text-xl font-bold text-brand-text">{todayDay.dayLabel}</h2>
-                    {getDayTypeBadge(todayDay.type)}
+                    {<DayTypeBadge type={todayDay.type} />}
                   </div>
                   <p className="mt-2 text-sm text-brand-muted">
                     {todayDay.exercises?.length ?? 0} exercise{todayDay.exercises?.length === 1 ? '' : 's'}
@@ -241,7 +227,7 @@ export default function FitnessHome() {
                       {day.exercises?.length ?? 0} exercise{day.exercises?.length === 1 ? '' : 's'}
                     </p>
                   </div>
-                  {getDayTypeBadge(day.type)}
+                  <DayTypeBadge type={day.type} />
                 </button>
               ))}
             </div>
@@ -252,6 +238,8 @@ export default function FitnessHome() {
       {isLogModalOpen && todayDay && (
         <LogSessionModal
           day={todayDay}
+          completedAt={todayIso}
+          logSession={logSession}
           onClose={() => setIsLogModalOpen(false)}
           onLogged={() => setIsLogModalOpen(false)}
         />
