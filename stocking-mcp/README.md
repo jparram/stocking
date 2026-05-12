@@ -222,7 +222,7 @@ get_daily_brief({ date?: string })
 
 ---
 
-## DailyBrief schema (v1.1) — `household` block
+## DailyBrief schema (v1.2) — `household` block
 
 For Morning Advantage brief generation, include the following in the DailyBrief payload:
 
@@ -237,6 +237,12 @@ For Morning Advantage brief generation, include the following in the DailyBrief 
     "shopping_list_id": "3a53b369-...",
     "meal_plan_week_of": "2026-05-10",
     "today_dinner": "Chicken thighs — baked",
+    "today_workout": {
+      "dayLabel": "Full Body A — Push Focus",
+      "type": "STRENGTH",
+      "exerciseCount": 6,
+      "completedToday": false
+    },
     "pantry_flags": []
   }
 }
@@ -251,11 +257,12 @@ For Morning Advantage brief generation, include the following in the DailyBrief 
 | `shopping_list_id` | string \| null | Active list ID for the due store, if one exists |
 | `meal_plan_week_of` | string \| null | `stocking:get_meal_plan` for current week (ISO `YYYY-MM-DD`, Monday-of-week) |
 | `today_dinner` | string \| null | Dinner entry from meal plan for today's date |
+| `today_workout` | object \| null | `stocking:get_today_workout` result mapped to `{ dayLabel, type, exerciseCount, completedToday }`; null if no active program or no day matches today's weekday |
 | `pantry_flags` | string[] | Reserved — empty for now, future pantry tracking |
 
 ### Morning Advantage brief-generator integration
 
-The brief generator (Work LVM, Morning Advantage repo) assembles the `household` block by calling `get_due_store`, `get_shopping_lists`, and `get_meal_plan` from Stocking MCP at ~5 AM, then writes the completed brief to S3 (`briefs/YYYY-MM-DD.json`).
+The brief generator (Work LVM, Morning Advantage repo) assembles the `household` block by calling `get_due_store`, `get_shopping_lists`, `get_meal_plan`, and `get_today_workout` from Stocking MCP at ~5 AM, then writes the completed brief to S3 (`briefs/YYYY-MM-DD.json`).
 
 `stocking:get_daily_brief` is the **read-back** tool — it fetches the written brief from S3 so that Claude or other consumers can inspect it.
 

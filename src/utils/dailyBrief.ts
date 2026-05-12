@@ -1,6 +1,15 @@
+import type { WorkoutDayType } from '../types';
+
 const DAILY_BRIEF_BASE_URL = (import.meta.env['VITE_DAILY_BRIEF_BASE_URL'] as string | undefined)
   ?.trim()
   .replace(/\/+$/, '');
+
+export interface DailyBriefTodayWorkout {
+  dayLabel: string;
+  type: WorkoutDayType;
+  exerciseCount: number;
+  completedToday: boolean;
+}
 
 export interface DailyBriefHousehold {
   shopping_due?: boolean;
@@ -8,6 +17,7 @@ export interface DailyBriefHousehold {
   shopping_list_id?: string | null;
   meal_plan_week_of?: string | null;
   today_dinner?: string | null;
+  today_workout?: DailyBriefTodayWorkout | null;
   pantry_flags?: string[];
 }
 
